@@ -1,3 +1,84 @@
 from django.shortcuts import render
+from rest_framework import generics, permissions
+from rest_framework.response import Response
+from rest_framework.exceptions import NotFound
+from .models import Episode, DailyLog
+from .serializers import EpisodeOnboardingSerializer, DailyLogSerializer
+from datetime import date
 
-# Create your views here.
+class EpisodeOnboardingView(generics.CreateAPIView):
+    #산모 온보딩 정보 저장 API (POST)
+    serializer_class = EpisodeOnboardingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        # 로그인한 유저를 자동으로 episode.user에 연결
+        serializer.save(user=self.request.user)
+
+
+class MyEpisodeView(generics.RetrieveAPIView):
+    #현재 산모의 온보딩 정보 조회 API (GET)
+    serializer_class = EpisodeOnboardingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return Episode.objects.filter(user=self.request.user, is_active=True).latest('created_at')
+
+
+def get_active_episode(user):
+    episode = Episode.objects.filter(user=user, is_active=True).order_by('-created_at').first()
+    if not episode:
+        raise NotFound("진행 중인 episode가 없습니다. 온보딩을 먼저 완료해주세요.")
+    return episode
+
+class DailyLogListCreateView(generics.ListCreateAPIView):
+   
+    serializer_class = DailyLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self): #최근 기록 목록 조회(최신순)
+        episode = get_active_episode(self.request.user)
+        queryset = DailyLog.objects.filter(episode=episode)
+
+        # ?days=7 쿼리파라미터로 최근 N일만 조회 가능하게
+        days = self.request.query_params.get('days')
+        if days:
+            queryset = queryset[:int(days)]
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+        episode = get_active_episode(request.user)
+        log_date = request.data.get('log_date', date.today().isoformat())
+
+        # 오늘 기록이 이미 있으면 update, 없으면 create
+        instance, created = DailyLog.objects.get_or_create(
+            episode=episode,
+            log_date=log_date,
+        )
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(episode=episode)
+
+        status_code = 201 if created else 200
+        return Response(serializer.data, status=status_code)
+    
+class DailyLogDetailView(generics.RetrieveUpdateAPIView):
+   
+    serializer_class = DailyLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        episode = get_active_episode(self.request.user)
+        return DailyLog.objects.filter(episode=episode)
+    
+class TodayLogView(generics.RetrieveAPIView):
+    
+    serializer_class = DailyLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        episode = get_active_episode(self.request.user)
+        log = DailyLog.objects.filter(episode=episode, log_date=date.today()).first()
+        if not log:
+            raise NotFound("오늘 기록이 아직 없습니다.")
+        return log

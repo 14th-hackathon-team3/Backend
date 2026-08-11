@@ -46,7 +46,21 @@ INSTALLED_APPS = [
     'notifications',
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",  # 로그아웃/재발급 무효화용
+    'drf_spectacular',
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Recovery Relay API',
+    'DESCRIPTION': '산후 회복 케어 플랫폼 API',
+    'VERSION': '1.0.0',
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -140,10 +154,4 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "USER_ID_FIELD": "user_id",
     "USER_ID_CLAIM": "user_id", # ← 토큰 payload에 들어갈 키 이름도 맞춰줌
-}
-
-REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-    ],
 }
