@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import environ
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -155,3 +156,12 @@ SIMPLE_JWT = {
     "USER_ID_FIELD": "user_id",
     "USER_ID_CLAIM": "user_id", # ← 토큰 payload에 들어갈 키 이름도 맞춰줌
 }
+
+
+
+env = environ.Env()
+environ.Env.read_env(BASE_DIR / ".env")
+
+KAKAO_CLIENT_ID = env("KAKAO_CLIENT_ID")
+KAKAO_CLIENT_SECRET = env("KAKAO_CLIENT_SECRET")
+KAKAO_REDIRECT_URI = env("KAKAO_REDIRECT_URI")
