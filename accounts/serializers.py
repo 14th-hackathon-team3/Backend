@@ -56,3 +56,4 @@ class SocialLoginSerializer(serializers.Serializer):
     provider = serializers.ChoiceField(choices=["kakao", "naver"])
     code = serializers.CharField()
     user_type = serializers.ChoiceField(choices=["mother", "guardian"], required=False)
+    invite_code = serializers.CharField(required=False, allow_blank=True)

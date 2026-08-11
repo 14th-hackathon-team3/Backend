@@ -9,7 +9,7 @@ from .models import User
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-from .services import SocialLoginService, SignupRequiredError
+from .services import SocialLoginService, SignupRequiredError, InvalidInviteCodeError
 from .tokens import issue_tokens_for_user
  
 class SignupView(generics.CreateAPIView):
@@ -58,12 +58,18 @@ class SocialLoginView(generics.GenericAPIView):
  
         service = SocialLoginService(provider=data["provider"])
         try:
-            user, is_new = service.login_or_signup(code=data["code"], user_type=data.get("user_type"))
+            user, is_new = service.login_or_signup(
+                code=data["code"],
+                user_type=data.get("user_type"),
+                invite_code=data.get("invite_code"),
+            )
         except SignupRequiredError:
             return Response(
                 {"detail": "신규 유저입니다. user_type을 포함해 다시 요청해주세요.", "code": "SIGNUP_REQUIRED"},
                 status=409,
             )
+        except InvalidInviteCodeError as e:
+            return Response({"detail": str(e), "code": "INVALID_INVITE_CODE"}, status=400)
  
         tokens = issue_tokens_for_user(user)
         return Response(
