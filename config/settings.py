@@ -43,7 +43,18 @@ INSTALLED_APPS = [
     'content',
     'care',
     'recovery',
+    'drf_spectacular',
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Recovery Relay API',
+    'DESCRIPTION': '산후 회복 케어 플랫폼 API',
+    'VERSION': '1.0.0',
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

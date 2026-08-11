@@ -37,3 +37,59 @@ class Episode(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.delivery_date}"
+    
+    
+class DailyLog(models.Model):
+    class Emotion(models.TextChoices):
+        HAPPY = 'happy', '행복한'
+        ANGRY = 'angry', '화남'
+        LOW_ENERGY = 'low_energy', '에너지부족'
+        SAD = 'sad', '슬픈'
+        DEPRESSED = 'depressed', '우울한'
+        CONFUSED = 'confused', '혼란스러운'
+        CALM = 'calm', '차분한'
+        MOODY = 'moody', '변덕스러운'
+        IRRITATED = 'irritated', '짜증나는'
+        WORRIED = 'worried', '걱정스러운'
+        ACTIVE = 'active', '활동적인'
+
+    class ActivityLevel(models.TextChoices):
+        LOW = 'low', '낮음'
+        NORMAL = 'normal', '보통'
+        HIGH = 'high', '많음'
+
+    class HairLossStatus(models.TextChoices):
+        SAME = 'same', '평소와 같음'
+        SLIGHT = 'slight', '약간 빠짐'
+        HEAVY = 'heavy', '많이 빠짐'
+
+    episode = models.ForeignKey(Episode, on_delete=models.CASCADE, related_name='daily_logs')
+    log_date = models.DateField()
+
+    emotion = models.CharField(max_length=15, choices=Emotion.choices, null=True, blank=True)
+    sleep_hours = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    pain_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    pain_area = models.CharField(max_length=100, blank=True)
+    breastfeeding = models.CharField(max_length=20, choices=Episode.FeedingType.choices, null=True, blank=True)
+    medication = models.CharField(max_length=255, blank=True)
+    exercise = models.CharField(max_length=255, blank=True)
+    activity_level = models.CharField(max_length=10, choices=ActivityLevel.choices, null=True, blank=True)
+    diet = models.JSONField(null=True, blank=True)  # {"breakfast": "...", "lunch": "...", "dinner": "..."}
+    memo = models.TextField(blank=True)
+
+    skin_self_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    hair_loss_status = models.CharField(max_length=20, choices=HairLossStatus.choices, null=True, blank=True)
+    skin_symptom_tags = models.JSONField(null=True, blank=True)
+    pelvic_floor_symptoms = models.JSONField(null=True, blank=True)
+
+    private_fields = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['episode', 'log_date'], name='unique_episode_log_date')
+        ]
+        ordering = ['-log_date']
+
+    def __str__(self):
+        return f"{self.episode} - {self.log_date}"
