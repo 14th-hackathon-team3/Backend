@@ -43,11 +43,17 @@ INSTALLED_APPS = [
     'content',
     'care',
     'recovery',
+    'notifications',
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",  # 로그아웃/재발급 무효화용
     'drf_spectacular',
 ]
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
 }
 
 SPECTACULAR_SETTINGS = {
@@ -137,3 +143,15 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+AUTH_USER_MODEL = "accounts.User"
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
+    "ROTATE_REFRESH_TOKENS": True,       # refresh 재발급시 이전 토큰 폐기
+    "BLACKLIST_AFTER_ROTATION": True,
+    "USER_ID_FIELD": "user_id",
+    "USER_ID_CLAIM": "user_id", # ← 토큰 payload에 들어갈 키 이름도 맞춰줌
+}
