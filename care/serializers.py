@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Episode, DailyLog
+from .models import Episode, DailyLog, VoiceMemo
 
 class EpisodeOnboardingSerializer(serializers.ModelSerializer):
     postpartum_week = serializers.ReadOnlyField()  # 계산값이라 읽기 전용으로만 응답에 포함
@@ -51,3 +51,9 @@ class DailyLogSerializer(serializers.ModelSerializer):
         if value is not None and not (1 <= value <= 5):
             raise serializers.ValidationError("피부 자가평가는 1~5점 사이여야 합니다.")
         return value
+    
+class VoiceMemoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VoiceMemo
+        fields = ['id', 'audio_file', 'duration_seconds', 'transcript_text', 'status', 'created_at']
+        read_only_fields = ['id', 'transcript_text', 'status', 'created_at']

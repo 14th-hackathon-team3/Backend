@@ -3,8 +3,9 @@ from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound
 from .models import Episode, DailyLog
-from .serializers import EpisodeOnboardingSerializer, DailyLogSerializer
+from .serializers import EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer
 from datetime import date
+from .services import upload_and_transcribe
 
 class EpisodeOnboardingView(generics.CreateAPIView):
     #산모 온보딩 정보 저장 API (POST)
@@ -82,3 +83,22 @@ class TodayLogView(generics.RetrieveAPIView):
         if not log:
             raise NotFound("오늘 기록이 아직 없습니다.")
         return log
+    
+class VoiceMemoUploadView(generics.GenericAPIView):
+    """POST /api/care/voice-memos/  (multipart/form-data, key='audio')"""
+    serializer_class = VoiceMemoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        episode = get_active_episode(request.user)
+        audio_file = request.FILES.get('audio')
+        if not audio_file:
+            return Response({"error": "audio 파일이 필요합니다."}, status=400)
+
+        today_log, _ = DailyLog.objects.get_or_create(
+            episode=episode, log_date=date.today()
+        )
+
+        voice_memo = upload_and_transcribe(today_log, audio_file)
+        serializer = self.get_serializer(voice_memo)
+        return Response(serializer.data, status=201)
