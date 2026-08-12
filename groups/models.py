@@ -74,6 +74,8 @@ class Membership(models.Model):
     )
     is_active = models.BooleanField(default=True)
     is_primary = models.BooleanField(default=False)  # 주보호자 여부
+    is_cohabiting = models.BooleanField(default=False)
+    available_time = models.JSONField(null=True, blank=True)
     joined_at = models.DateTimeField(auto_now_add=True)
  
     class Meta:
