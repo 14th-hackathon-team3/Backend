@@ -93,3 +93,20 @@ class DailyLog(models.Model):
 
     def __str__(self):
         return f"{self.episode} - {self.log_date}"
+    
+    
+class VoiceMemo(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', '처리중'
+        DONE = 'done', '완료'
+        FAILED = 'failed', '실패'
+
+    daily_log = models.ForeignKey(DailyLog, on_delete=models.CASCADE, related_name='voice_memos')
+    audio_file = models.FileField(upload_to='voice_memos/%Y/%m/%d/')
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    transcript_text = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.daily_log} - voice memo"
