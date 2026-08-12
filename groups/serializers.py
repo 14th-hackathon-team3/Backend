@@ -31,3 +31,9 @@ class GuardianOnboardingSerializer(serializers.ModelSerializer):
             {"day": slot["day"], "start": slot["start"].strftime("%H:%M"), "end": slot["end"].strftime("%H:%M")}
             for slot in value
         ]
+
+class InviteCodeCheckSerializer(serializers.Serializer):
+    """응답용 - 초대코드 검증 결과"""
+    group_id = serializers.IntegerField()
+    mother_name = serializers.CharField()
+    is_valid = serializers.BooleanField()
