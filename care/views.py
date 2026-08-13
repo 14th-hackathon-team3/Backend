@@ -1,9 +1,9 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from rest_framework import generics, permissions
 from rest_framework.response import Response
-from rest_framework.exceptions import NotFound
-from .models import Episode, DailyLog
-from .serializers import EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer
+from rest_framework.exceptions import NotFound, PermissionDenied
+from .models import Episode, DailyLog, Todo, RecoveryPlan
+from .serializers import EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer, TodoUpdateSerializer, TodoSerializer
 from datetime import date
 from .services import upload_and_transcribe, generate_daily_plan
 
@@ -72,17 +72,6 @@ class DailyLogDetailView(generics.RetrieveUpdateAPIView):
         episode = get_active_episode(self.request.user)
         return DailyLog.objects.filter(episode=episode)
     
-class TodayLogView(generics.RetrieveAPIView):
-    
-    serializer_class = DailyLogSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_object(self):
-        episode = get_active_episode(self.request.user)
-        log = DailyLog.objects.filter(episode=episode, log_date=date.today()).first()
-        if not log:
-            raise NotFound("오늘 기록이 아직 없습니다.")
-        return log
     
 class VoiceMemoUploadView(generics.GenericAPIView):
     """POST /api/care/voice-memos/  (multipart/form-data, key='audio')"""
@@ -129,3 +118,72 @@ class GenerateDailyPlanView(generics.GenericAPIView):
                 for t in plan.todos.filter(assignee_membership__isnull=False)
             ],
         }, status=201)
+        
+class TodayLogView(generics.RetrieveAPIView):
+    
+    serializer_class = DailyLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        episode = get_active_episode(self.request.user)
+        log = DailyLog.objects.filter(episode=episode, log_date=date.today()).first()
+        if not log:
+            raise NotFound("오늘 기록이 아직 없습니다.")
+        return log
+    
+class TodoUpdateView(generics.UpdateAPIView):
+    """PATCH /api/care/todos/<id>/  — draft 상태일 때만 산모가 내용 수정"""
+    serializer_class = TodoUpdateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Todo.objects.filter(recovery_plan__episode__user=self.request.user)
+
+    def get_object(self):
+        todo = super().get_object()
+        if todo.status != Todo.Status.DRAFT:
+            raise PermissionDenied("이미 확정된 할 일은 수정할 수 없습니다.")
+        return todo
+    
+
+class ConfirmDailyPlanView(generics.GenericAPIView):
+    """POST /api/care/plans/<plan_id>/confirm/ — 오늘 draft todos를 한 번에 확정"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, plan_id):
+        plan = get_object_or_404(RecoveryPlan, pk=plan_id, episode__user=request.user)
+        updated = plan.todos.filter(status=Todo.Status.DRAFT).update(status=Todo.Status.CONFIRMED)
+
+        if updated == 0:
+            return Response({"error": "확정할 draft 상태의 할 일이 없습니다."}, status=400)
+
+        return Response({
+            "plan_id": plan.pk,
+            "confirmed_count": updated,
+        }, status=200)
+        
+class TodoDetailView(generics.RetrieveUpdateAPIView):
+    """
+    GET   /api/care/todos/<id>/   개별 todo 조회
+    PATCH /api/care/todos/<id>/   개별 todo 수정 (content, is_skip 등)
+    """
+    serializer_class = TodoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # 본인 episode에 속한 todo만 수정 가능하게 제한
+        episode = get_active_episode(self.request.user)
+        return Todo.objects.filter(recovery_plan__episode=episode)
+    
+class ConfirmAllTodosView(generics.GenericAPIView):# 혹시 몰라서 한 번에 확정 짓는 것도 만들어 놓음
+    """POST /api/care/plans/<plan_id>/confirm/  - 오늘 플랜의 모든 draft todo를 한번에 확정"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, plan_id):
+        episode = get_active_episode(request.user)
+        updated = Todo.objects.filter(
+            recovery_plan_id=plan_id,
+            recovery_plan__episode=episode,
+            status=Todo.Status.DRAFT
+        ).update(status=Todo.Status.CONFIRMED)
+        return Response({"confirmed_count": updated})
