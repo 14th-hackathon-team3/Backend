@@ -51,11 +51,7 @@ class Membership(models.Model):
         FULL = "full", "전체 조회"
         PARTIAL = "partial", "일부 조회"
  
-    class NotificationFrequency(models.TextChoices):
-        DAILY = "daily", "매일"
-        EVERY_OTHER_DAY = "every_other_day", "격일"
-        OFF = "off", "안 받음"
- 
+    
     membership_id = models.BigAutoField(primary_key=True)
     group = models.ForeignKey(Group, on_delete=models.CASCADE, db_column="group_id", related_name="memberships")
     user = models.ForeignKey(
@@ -69,9 +65,9 @@ class Membership(models.Model):
     # 실제 관계(남편/부모님/도우미 등) - UI 표시용, 권한 로직에는 사용 안 함
     relation = models.CharField(max_length=20, null=True, blank=True)
     data_scope = models.CharField(max_length=20, choices=DataScope.choices, default=DataScope.FULL)
-    notification_frequency = models.CharField(
-        max_length=20, choices=NotificationFrequency.choices, default=NotificationFrequency.DAILY
-    )
+    notify_todo_created = models.BooleanField(default=True) # todo 생성 알림
+    notify_family_todo_completed = models.BooleanField(default=True) # 가족 todo 완료 알림
+    notify_family_todo_incomplete = models.BooleanField(default=True) # 가족 todo 미완료 알림
     is_active = models.BooleanField(default=True)
     is_primary = models.BooleanField(default=False)  # 주보호자 여부
     is_cohabiting = models.BooleanField(default=False)

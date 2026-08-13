@@ -26,3 +26,8 @@ class InviteCodeCheckSerializer(serializers.Serializer):
     group_id = serializers.IntegerField()
     mother_name = serializers.CharField()
     is_valid = serializers.BooleanField()
+
+class NotificationSettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Membership
+        fields = ["notify_todo_created", "notify_family_todo_completed", "notify_family_todo_incomplete"]
