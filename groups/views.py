@@ -4,8 +4,7 @@ from rest_framework import generics, permissions
 from rest_framework.exceptions import NotFound
  
 from .models import Membership, Group
-from .serializers import GuardianOnboardingSerializer, InviteCodeCheckSerializer
- 
+from .serializers import GuardianOnboardingSerializer, InviteCodeCheckSerializer, NotificationSettingSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
@@ -71,3 +70,23 @@ class InviteCodeCheckView(APIView):
         data = serializer.data
         data["already_joined"] = already_joined
         return Response(data, status=200)
+
+class NotificationSettingView(generics.RetrieveUpdateAPIView):
+    """
+    GET/PATCH /api/groups/membership/notification-settings/
+    로그인한 유저의 membership 기준 알림 타입별 on/off 설정.
+    (산모/보호자 둘 다 사용 가능 - role 구분 없음)
+    """
+    serializer_class = NotificationSettingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+ 
+    def get_object(self):
+        membership = (
+            Membership.objects
+            .filter(user=self.request.user)
+            .order_by("-joined_at")
+            .first()
+        )
+        if not membership:
+            raise NotFound("가입된 그룹이 없습니다.")
+        return membership
