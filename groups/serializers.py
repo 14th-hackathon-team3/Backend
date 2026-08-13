@@ -46,3 +46,9 @@ class GuardianOnboardingSerializer(serializers.ModelSerializer):
         if primary_count >= 3:
             raise serializers.ValidationError("주 보호자는 그룹당 최대 3명까지 지정할 수 있습니다.")
         return value
+
+class InviteCodeCheckSerializer(serializers.Serializer):
+    """응답용 - 초대코드 검증 결과"""
+    group_id = serializers.IntegerField()
+    mother_name = serializers.CharField()
+    is_valid = serializers.BooleanField()
