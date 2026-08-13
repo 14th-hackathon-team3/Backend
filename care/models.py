@@ -110,3 +110,57 @@ class VoiceMemo(models.Model):
 
     def __str__(self):
         return f"{self.daily_log} - voice memo"
+    
+class RecoveryPlan(models.Model):
+    class PlanType(models.TextChoices):
+        DAILY = 'daily', '일간'
+
+    episode = models.ForeignKey(Episode, on_delete=models.CASCADE, related_name='recovery_plans')
+    plan_type = models.CharField(max_length=10, choices=PlanType.choices, default=PlanType.DAILY)
+    plan_date = models.DateField()
+    ai_summary = models.TextField(blank=True)        # 거시적 관점 2~3문장
+    bottleneck = models.CharField(max_length=255, blank=True)   # 병목 한 줄
+    reasoning = models.TextField(blank=True)          # 판단 근거 (버튼 눌러야 보이는 부분)
+    tomorrow_goal = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['episode', 'plan_date'], name='unique_episode_plan_date')
+        ]
+
+    def __str__(self):
+        return f"{self.episode} - {self.plan_date}"
+
+
+class Todo(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = 'draft', '임시생성'
+        CONFIRMED = 'confirmed', '확정'
+        DONE = 'done', '완료'
+
+    class Visibility(models.TextChoices):
+        PUBLIC = 'public', '공개'
+        PRIVATE = 'private', '비공개'
+
+    recovery_plan = models.ForeignKey(RecoveryPlan, on_delete=models.CASCADE, related_name='todos')
+    content = models.CharField(max_length=255)
+    reason = models.CharField(max_length=255, blank=True)   # 추천 이유 (버튼 눌러야 보임)
+    is_skip = models.BooleanField(default=False)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
+    order_index = models.PositiveSmallIntegerField(default=0)
+    visibility = models.CharField(max_length=10, choices=Visibility.choices, default=Visibility.PUBLIC)
+
+    # 산모용 todo는 None, 가족용 todo는 주 보호자 중 한 명이 배정됨
+    assignee_membership = models.ForeignKey(
+        'groups.Membership',  # 실제 앱 이름 확인
+        on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_todos'
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        'groups.Membership', on_delete=models.SET_NULL, null=True, blank=True, related_name='completed_todos'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.content

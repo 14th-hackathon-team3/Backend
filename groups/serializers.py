@@ -22,7 +22,7 @@ class GuardianOnboardingSerializer(serializers.ModelSerializer):
  
     class Meta:
         model = Membership
-        fields = ["relation", "is_cohabiting", "available_time"]
+        fields = ["relation", "is_cohabiting", "is_primary",  "available_time"]
  
     def validate_available_time(self, value):
         # TimeSlotSerializer가 OrderedDict를 돌려주는데 JSONField엔 datetime.time 객체가
@@ -31,6 +31,21 @@ class GuardianOnboardingSerializer(serializers.ModelSerializer):
             {"day": slot["day"], "start": slot["start"].strftime("%H:%M"), "end": slot["end"].strftime("%H:%M")}
             for slot in value
         ]
+    def validate_is_primary(self, value):
+        # False로 보내거나 안 보내면 체크할 필요 없음
+        if not value:
+            return value
+
+        instance = self.instance  # UpdateAPIView라 항상 존재
+        primary_count = (
+            Membership.objects
+            .filter(group=instance.group, role=Membership.Role.MEMBER, is_primary=True)
+            .exclude(pk=instance.pk)  # 본인 제외하고 세기
+            .count()
+        )
+        if primary_count >= 3:
+            raise serializers.ValidationError("주 보호자는 그룹당 최대 3명까지 지정할 수 있습니다.")
+        return value
 
 class InviteCodeCheckSerializer(serializers.Serializer):
     """응답용 - 초대코드 검증 결과"""

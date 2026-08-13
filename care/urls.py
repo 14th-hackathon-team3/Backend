@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import EpisodeOnboardingView, MyEpisodeView, DailyLogListCreateView, DailyLogDetailView, TodayLogView, VoiceMemoUploadView
+from .views import EpisodeOnboardingView, MyEpisodeView, DailyLogListCreateView, DailyLogDetailView, TodayLogView, VoiceMemoUploadView, GenerateDailyPlanView
 
 urlpatterns = [
     path('onboarding/', EpisodeOnboardingView.as_view(), name='episode-onboarding'),
@@ -8,4 +8,5 @@ urlpatterns = [
     path('daily-logs/today/', TodayLogView.as_view(), name='daily-log-today'),
     path('daily-logs/<int:pk>/', DailyLogDetailView.as_view(), name='daily-log-detail'),
     path('voice-memos/', VoiceMemoUploadView.as_view(), name='voice-memo-upload'),
+    path('plans/generate/', GenerateDailyPlanView.as_view(), name='generate-daily-plan'),
 ]
