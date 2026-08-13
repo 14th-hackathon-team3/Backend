@@ -1,9 +1,15 @@
 from django.conf import settings
 from openai import OpenAI
-from .models import DailyLog, VoiceMemo
+from .models import DailyLog, VoiceMemo, Episode, RecoveryPlan, Todo
+import json
+from datetime import date, timedelta
+from django.db import transaction
+from pydantic import BaseModel, Field
+from groups.models import Membership, Group
 
 openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
+WEEKDAY_KR = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
 
 def upload_and_transcribe(daily_log: DailyLog, audio_file) -> VoiceMemo:
     voice_memo = VoiceMemo.objects.create(
@@ -27,3 +33,281 @@ def upload_and_transcribe(daily_log: DailyLog, audio_file) -> VoiceMemo:
 
     voice_memo.save()
     return voice_memo
+
+
+# ─────────────────────────────────────────
+# 1. 데이터 수집 + 결측 방어
+# ─────────────────────────────────────────
+
+def get_recent_logs_summary(episode: Episode) -> list[dict]:
+    """최근 7일 daily_log를 가져오되, null 필드는 JSON에서 아예 제외 (없는 값을 지어내지 않도록)"""
+    logs = DailyLog.objects.filter(episode=episode).order_by('-log_date')[:7]
+
+    summary = []
+    for log in logs:
+        entry = {"date": str(log.log_date)}
+        # None이 아닌 필드만 포함
+        field_map = {
+            "emotion": log.emotion,
+            "sleep_hours": float(log.sleep_hours) if log.sleep_hours is not None else None,
+            "pain_score": log.pain_score,
+            "pain_area": log.pain_area or None,
+            "breastfeeding": log.breastfeeding,
+            "activity_level": log.activity_level,
+            "diet": log.diet,
+            "memo": log.memo or None,
+        }
+        for key, value in field_map.items():
+            if value is not None and value != "":
+                entry[key] = value
+
+        # 음성 메모 텍스트도 있으면 합쳐서 넣기
+        voice_texts = [vm.transcript_text for vm in log.voice_memos.filter(status='done') if vm.transcript_text]
+        if voice_texts:
+            entry["voice_transcript"] = " ".join(voice_texts)
+
+        # private 메모는 별도 표시 (가족용 프롬프트에서 제외할 때 필터링 기준으로 씀)
+        if log.private_fields:
+            entry["_has_private"] = True
+
+        summary.append(entry)
+
+    return summary
+
+
+def get_public_logs_summary(episode: Episode) -> list[dict]:
+    """가족용 프롬프트용 — private 표시된 항목/메모는 제거"""
+    full_summary = get_recent_logs_summary(episode)
+    public_summary = []
+    for entry in full_summary:
+        entry = dict(entry)  # 원본 훼손 방지
+        if entry.pop("_has_private", False):
+            entry.pop("memo", None)
+            entry.pop("voice_transcript", None)
+        public_summary.append(entry)
+    return public_summary
+
+
+def get_primary_caregivers(episode: Episode) -> list[Membership]:
+    """주 보호자(is_primary=True)만 가져옴 — 담당자 배정은 주 보호자 중에서만"""
+    try:
+        group = Group.objects.get(owner_user=episode.user)
+    except Group.DoesNotExist:
+        return []
+
+    return list(
+        Membership.objects.filter(
+            group=group, role=Membership.Role.MEMBER, is_primary=True, is_active=True
+        )
+    )
+
+
+def build_caregiver_info(caregivers: list[Membership]) -> list[dict]:
+    return [
+        {
+            "membership_id": c.pk,
+            "relation": c.relation,
+            "is_cohabiting": c.is_cohabiting,
+            "available_time": c.available_time,
+        }
+        for c in caregivers
+    ]
+
+
+# ─────────────────────────────────────────
+# 2. 출력 스키마
+# ─────────────────────────────────────────
+
+class MotherTodo(BaseModel):
+    content: str
+    reason: str
+
+class MotherPlanOutput(BaseModel):
+    ai_summary: str = Field(description="거시적 관점 2~3문장, 의학적 진단명 금지")
+    bottleneck: str = Field(description="오늘의 핵심 병목 한 줄. [원인]으로 인한 [위험요소] 방지 및 [핵심액션] 형태")
+    reasoning: str = Field(description="bottleneck을 그렇게 판단한 근거 1~2문장")
+    tomorrow_goal: str = Field(description="내일의 회복 목표 한 줄")
+    mother_todos: list[MotherTodo] = Field(description="정확히 3개, 비용 발생 금지, 하루 안에 완료 가능, 행동 단위")
+
+
+class FamilyTodo(BaseModel):
+    content: str
+    reason: str
+    assignee_membership_id: int = Field(description="입력으로 제공된 membership_id 중 하나여야 함")
+
+class FamilyPlanOutput(BaseModel):
+    family_todos: list[FamilyTodo] = Field(description="정확히 10개, 카테고리 중복 금지, 보호자별 균형 배정")
+
+
+# ─────────────────────────────────────────
+# 3. 프롬프트 빌더
+# ─────────────────────────────────────────
+
+def build_mother_prompt(episode: Episode, logs_summary: list[dict]) -> str:
+    today = date.today()
+    weekday_str = WEEKDAY_KR[today.weekday()]
+    has_enough_data = len(logs_summary) >= 6
+
+    trend_note = (
+        "충분한 기록이 쌓여있으니 최근 며칠간의 변화 흐름(추세)을 짚어주세요."
+        if has_enough_data else
+        f"아직 기록이 {len(logs_summary)}일치뿐이라 뚜렷한 추세 판단은 어렵습니다. "
+        "무리하게 추세를 단정하지 말고, 최근 기록된 상태 위주로만 요약해주세요."
+    )
+
+    return f"""당신은 10년 차 베테랑 산후 회복 케어 코디네이터입니다.
+의학적 진단이 아니라, 산모의 최근 생활 기록을 바탕으로 오늘 하루의 셀프케어 플랜을 제안합니다.
+
+[오늘 날짜] {today.isoformat()} ({weekday_str})
+
+[산모 상태 프로필]
+- 출산 방식: {episode.get_delivery_type_display()}
+- 산후 주차: {episode.postpartum_week}주차
+- 초기 통증 부위: {episode.initial_pain_area or '기록 없음'}
+- 회복 장소: {episode.recovery_location or '기록 없음'}
+
+[최근 {len(logs_summary)}일간 기록]
+{json.dumps(logs_summary, ensure_ascii=False, indent=2)}
+
+[데이터 관련 안내]
+{trend_note}
+
+[작성 규칙]
+1. ai_summary: 수면/통증/식사/감정의 변화 흐름을 2~3문장으로. "~한 것으로 보여요", "~하는 흐름이에요" 톤 유지.
+   의학적 진단명(산후우울증, 감염증 등) 절대 사용 금지. 변화 없는 항목은 "안정적으로 유지되고 있다"고 표현.
+2. bottleneck: 우선순위 판단 기준은 수면 > 통증 > 감정 > 식사 > 활동량 순으로, 가장 신경 써야 할 요인 하나만 한 줄로.
+3. reasoning: 왜 그 병목을 골랐는지 근거를 1~2문장으로 (이건 화면에 바로 안 보이고 버튼 눌러야 보임).
+4. tomorrow_goal: 내일 지향할 목표 한 줄.
+5. mother_todos: 정확히 3개. 비용 발생 금지, 하루 안에 끝낼 수 있는 구체적 행동 단위로.
+   좋은 예: "침대에서 일어나기 전 5분간 가벼운 스트레칭 하기"
+   나쁜 예: "충분히 휴식하기" (너무 추상적)
+"""
+
+
+def build_family_prompt(episode: Episode, bottleneck: str, public_logs_summary: list[dict], caregiver_info: list[dict]) -> str:
+    today = date.today()
+    weekday_str = WEEKDAY_KR[today.weekday()]
+    valid_ids = [c["membership_id"] for c in caregiver_info]
+
+    return f"""당신은 산후 회복 케어 코디네이터입니다.
+아래 산모의 상태와, 곁에서 돕는 주 보호자들의 현실적인 가용 환경을 고려해
+오늘 하루 보호자들이 할 일 10개를 설계합니다.
+
+[오늘 날짜] {today.isoformat()} ({weekday_str})
+
+[산모 상태 요약]
+- 산후 주차: {episode.postpartum_week}주차
+- 오늘의 병목: {bottleneck}
+
+[최근 기록 (민감 정보 제외)]
+{json.dumps(public_logs_summary, ensure_ascii=False, indent=2)}
+
+[지원 가능한 주 보호자 목록 (총 {len(caregiver_info)}명)]
+{json.dumps(caregiver_info, ensure_ascii=False, indent=2)}
+※ assignee_membership_id는 반드시 위 목록에 있는 membership_id({valid_ids}) 중 하나여야 합니다.
+   목록에 없는 값을 만들어내지 마세요.
+
+[family_todos 구성 규칙]
+- 정확히 10개, 비슷하거나 겹치는 항목 생성 금지
+- 카테고리를 최소 1개 이상씩 고려: 수면 지원 / 식사 지원 / 수분 섭취 지원 / 가사 부담 감소 /
+  정서적 지지 / 신생아 케어 분담 / 이동·외출 지원 / 환경 정리
+- 배정 규칙:
+  a) available_time에 맞지 않는 시간대의 업무를 배정하지 마세요 (예: 저녁에만 가능한 보호자에게 오전 업무 배정 금지)
+  b) is_cohabiting=true인 보호자에게 가사/밀착 케어 비중을 더 높게
+  c) 보호자가 여러 명이면 10개를 균형 있게 분산 배정 (한 명에게 몰아주지 말 것)
+- "집안일 돕기"처럼 모호하게 쓰지 말고 "오후 2시경 거실 환기 10분 하고 청소기 돌리기"처럼 즉시 실행 가능한 구체적 문장으로
+- 단순 심부름이 아니라 오늘의 병목({bottleneck}) 해결에 실질적으로 기여하는 케어여야 함
+- 산모의 민감한 감정/메모 내용이 있었더라도 절대 직접 언급하거나 유추 가능하게 쓰지 마세요
+  (예: "산모가 우울해하니 위로해주기" 금지 → "산모가 좋아하는 따뜻한 차 타주며 가벼운 대화 나누기"처럼 우회 표현)
+"""
+
+
+# ─────────────────────────────────────────
+# 4. 후검증
+# ─────────────────────────────────────────
+
+def validate_mother_output(result: MotherPlanOutput):
+    if len(result.mother_todos) != 3:
+        raise ValueError(f"mother_todos는 3개여야 하는데 {len(result.mother_todos)}개 반환됨")
+
+
+def validate_family_output(result: FamilyPlanOutput, valid_ids: list[int]):
+    if len(result.family_todos) != 10:
+        raise ValueError(f"family_todos는 10개여야 하는데 {len(result.family_todos)}개 반환됨")
+    for t in result.family_todos:
+        if t.assignee_membership_id not in valid_ids:
+            raise ValueError(f"존재하지 않는 assignee_membership_id: {t.assignee_membership_id}")
+
+
+# ─────────────────────────────────────────
+# 5. 메인 함수
+# ─────────────────────────────────────────
+
+def generate_daily_plan(episode: Episode) -> RecoveryPlan:
+    logs_summary = get_recent_logs_summary(episode)
+    if not logs_summary:
+        raise ValueError("분석할 daily_log 데이터가 없습니다. 오늘 기록을 먼저 남겨주세요.")
+
+    # ── 1차 호출: 산모용 (private 포함) ──
+    mother_prompt = build_mother_prompt(episode, logs_summary)
+    mother_completion = openai_client.chat.completions.parse(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "당신은 산후 케어 플랜 생성 도우미입니다."},
+            {"role": "user", "content": mother_prompt},
+        ],
+        response_format=MotherPlanOutput,
+    )
+    mother_result: MotherPlanOutput = mother_completion.choices[0].message.parsed
+    validate_mother_output(mother_result)
+
+    with transaction.atomic():
+        plan, _ = RecoveryPlan.objects.update_or_create(
+            episode=episode,
+            plan_date=date.today(),
+            defaults={
+                "ai_summary": mother_result.ai_summary,
+                "bottleneck": mother_result.bottleneck,
+                "reasoning": mother_result.reasoning,
+                "tomorrow_goal": mother_result.tomorrow_goal,
+            }
+        )
+        plan.todos.filter(status=Todo.Status.DRAFT).delete()
+
+        for idx, t in enumerate(mother_result.mother_todos):
+            Todo.objects.create(
+                recovery_plan=plan, content=t.content, reason=t.reason,
+                order_index=idx, assignee_membership=None,
+            )
+
+    # ── 2차 호출: 가족용 (private 제외) ──
+    caregivers = get_primary_caregivers(episode)
+    if not caregivers:
+        # 보호자가 없으면 가족용 파트는 생성하지 않고 여기서 종료
+        return plan
+
+    caregiver_info = build_caregiver_info(caregivers)
+    public_logs_summary = get_public_logs_summary(episode)
+    family_prompt = build_family_prompt(episode, mother_result.bottleneck, public_logs_summary, caregiver_info)
+
+    family_completion = openai_client.chat.completions.parse(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "당신은 산후 케어 가족 할 일 배정 도우미입니다."},
+            {"role": "user", "content": family_prompt},
+        ],
+        response_format=FamilyPlanOutput,
+    )
+    family_result: FamilyPlanOutput = family_completion.choices[0].message.parsed
+    valid_ids = [c["membership_id"] for c in caregiver_info]
+    validate_family_output(family_result, valid_ids)
+
+    with transaction.atomic():
+        for idx, t in enumerate(family_result.family_todos):
+            Todo.objects.create(
+                recovery_plan=plan, content=t.content, reason=t.reason,
+                order_index=idx,
+                assignee_membership_id=t.assignee_membership_id,
+            )
+
+    return plan

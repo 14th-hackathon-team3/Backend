@@ -5,7 +5,7 @@ from rest_framework.exceptions import NotFound
 from .models import Episode, DailyLog
 from .serializers import EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer
 from datetime import date
-from .services import upload_and_transcribe
+from .services import upload_and_transcribe, generate_daily_plan
 
 class EpisodeOnboardingView(generics.CreateAPIView):
     #산모 온보딩 정보 저장 API (POST)
@@ -102,3 +102,30 @@ class VoiceMemoUploadView(generics.GenericAPIView):
         voice_memo = upload_and_transcribe(today_log, audio_file)
         serializer = self.get_serializer(voice_memo)
         return Response(serializer.data, status=201)
+    
+class GenerateDailyPlanView(generics.GenericAPIView):
+    """POST /api/care/plans/generate/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        episode = get_active_episode(request.user)
+        try:
+            plan = generate_daily_plan(episode)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=400)
+
+        return Response({
+            "plan_id": plan.pk,
+            "ai_summary": plan.ai_summary,
+            "bottleneck": plan.bottleneck,
+            "reasoning": plan.reasoning,
+            "tomorrow_goal": plan.tomorrow_goal,
+            "mother_todos": [
+                {"id": t.pk, "content": t.content, "reason": t.reason}
+                for t in plan.todos.filter(assignee_membership__isnull=True)
+            ],
+            "family_todos": [
+                {"id": t.pk, "content": t.content, "reason": t.reason, "assignee_membership_id": t.assignee_membership_id}
+                for t in plan.todos.filter(assignee_membership__isnull=False)
+            ],
+        }, status=201)
