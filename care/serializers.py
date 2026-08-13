@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Episode, DailyLog, VoiceMemo
+from .models import Episode, DailyLog, VoiceMemo, Todo
 
 class EpisodeOnboardingSerializer(serializers.ModelSerializer):
     postpartum_week = serializers.ReadOnlyField()  # 계산값이라 읽기 전용으로만 응답에 포함
@@ -57,3 +57,16 @@ class VoiceMemoSerializer(serializers.ModelSerializer):
         model = VoiceMemo
         fields = ['id', 'audio_file', 'duration_seconds', 'transcript_text', 'status', 'created_at']
         read_only_fields = ['id', 'transcript_text', 'status', 'created_at']
+        
+class TodoUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Todo
+        fields = ['content']  # 산모가 고칠 수 있는 건 내용뿐, reason/assignee는 AI 판단 그대로 유지
+        
+class TodoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Todo
+        fields = ['id', 'content', 'reason', 'is_skip', 'status', 'order_index',
+                   'assignee_membership', 'completed_by', 'completed_at']
+        read_only_fields = ['id', 'reason', 'order_index', 'assignee_membership', 'completed_by', 'completed_at']
+        # content, is_skip, status만 산모가 수정 가능하게 열어둠
