@@ -53,7 +53,14 @@ def get_recent_logs_summary(episode: Episode) -> list[dict]:
             "pain_score": log.pain_score,
             "pain_area": log.pain_area or None,
             "breastfeeding": log.breastfeeding,
-            "activity_level": log.activity_level,
+            "activity_hours": float(log.activity_hours) if log.activity_hours is not None else None,
+            "activity_type": log.activity_type or None,
+            "breast_milk_amount": log.breast_milk_amount,
+            "breastfeeding_pain_score": log.breastfeeding_pain_score,
+            "skin_self_score": log.skin_self_score,
+            "skin_symptom_tags": log.skin_symptom_tags,
+            "hair_loss_status": log.hair_loss_status,
+            "pelvic_floor_symptoms": log.pelvic_floor_symptoms,
             "diet": log.diet,
             "memo": log.memo or None,
         }
@@ -61,14 +68,12 @@ def get_recent_logs_summary(episode: Episode) -> list[dict]:
             if value is not None and value != "":
                 entry[key] = value
 
-        # 음성 메모 텍스트도 있으면 합쳐서 넣기
         voice_texts = [vm.transcript_text for vm in log.voice_memos.filter(status='done') if vm.transcript_text]
         if voice_texts:
             entry["voice_transcript"] = " ".join(voice_texts)
 
-        # private 메모는 별도 표시 (가족용 프롬프트에서 제외할 때 필터링 기준으로 씀)
-        if log.private_fields:
-            entry["_has_private"] = True
+        # 비공개로 지정된 "필드 이름 리스트"를 그대로 들고 있음 (예: ["emotion", "memo"])
+        entry["_private_fields"] = log.private_fields or []
 
         summary.append(entry)
 
@@ -76,14 +81,20 @@ def get_recent_logs_summary(episode: Episode) -> list[dict]:
 
 
 def get_public_logs_summary(episode: Episode) -> list[dict]:
-    """가족용 프롬프트용 — private 표시된 항목/메모는 제거"""
+    """가족용 프롬프트용 — 산모가 비공개 지정한 필드만 골라서 제거"""
     full_summary = get_recent_logs_summary(episode)
     public_summary = []
     for entry in full_summary:
-        entry = dict(entry)  # 원본 훼손 방지
-        if entry.pop("_has_private", False):
-            entry.pop("memo", None)
+        entry = dict(entry)
+        private_field_names = entry.pop("_private_fields", [])  # 마킹용 키는 무조건 제거
+
+        for field_name in private_field_names:
+            entry.pop(field_name, None)
+
+        # memo를 비공개로 잡으면 음성메모(voice_transcript)도 같이 가려주는 게 자연스러움
+        if "memo" in private_field_names:
             entry.pop("voice_transcript", None)
+
         public_summary.append(entry)
     return public_summary
 
@@ -142,6 +153,22 @@ class FamilyPlanOutput(BaseModel):
 # ─────────────────────────────────────────
 # 3. 프롬프트 빌더
 # ─────────────────────────────────────────
+def build_pain_area_text(episode: Episode) -> str:
+    """initial_pain_areas(리스트) + custom text를 사람이 읽을 수 있는 문자열로 변환"""
+    areas = episode.initial_pain_areas or []
+    if not areas:
+        return "기록 없음"
+
+    labels = []
+    for area in areas:
+        if area == Episode.PainArea.CUSTOM:
+            custom_text = episode.initial_pain_area_custom_text
+            labels.append(custom_text if custom_text else "직접 입력(내용 없음)")
+        else:
+            # choice value -> 한글 label 변환 (예: 'perineum' -> '회음부')
+            labels.append(Episode.PainArea(area).label)
+
+    return ", ".join(labels)
 
 def build_mother_prompt(episode: Episode, logs_summary: list[dict]) -> str:
     today = date.today()
@@ -154,6 +181,8 @@ def build_mother_prompt(episode: Episode, logs_summary: list[dict]) -> str:
         f"아직 기록이 {len(logs_summary)}일치뿐이라 뚜렷한 추세 판단은 어렵습니다. "
         "무리하게 추세를 단정하지 말고, 최근 기록된 상태 위주로만 요약해주세요."
     )
+    
+    pain_area_text = build_pain_area_text(episode)
 
     return f"""당신은 10년 차 베테랑 산후 회복 케어 코디네이터입니다.
 의학적 진단이 아니라, 산모의 최근 생활 기록을 바탕으로 오늘 하루의 셀프케어 플랜을 제안합니다.
@@ -163,7 +192,7 @@ def build_mother_prompt(episode: Episode, logs_summary: list[dict]) -> str:
 [산모 상태 프로필]
 - 출산 방식: {episode.get_delivery_type_display()}
 - 산후 주차: {episode.postpartum_week}주차
-- 초기 통증 부위: {episode.initial_pain_area or '기록 없음'}
+- 초기 통증 부위: {pain_area_text}
 - 회복 장소: {episode.recovery_location or '기록 없음'}
 
 [최근 {len(logs_summary)}일간 기록]
