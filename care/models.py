@@ -11,6 +11,16 @@ class Episode(models.Model):
         BREAST = 'breast', '모유'
         FORMULA = 'formula', '분유'
         MIXED = 'mixed', '혼합'
+        
+    class PainArea(models.TextChoices):
+        PERINEUM = 'perineum', '회음부'
+        LOWER_BACK = 'lower_back', '허리'
+        PELVIS = 'pelvis', '골반'
+        BREAST = 'breast', '가슴(유방)'
+        WRIST = 'wrist', '손목'
+        HEMORRHOID = 'hemorrhoid', '치질'
+        NONE = 'none', '특별한 통증 없음'
+        CUSTOM = 'custom', '직접 입력'
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -23,11 +33,13 @@ class Episode(models.Model):
     birth_order = models.PositiveSmallIntegerField(default=1)  
     older_child_age = models.PositiveSmallIntegerField(null=True, blank=True)
     initial_feeding_type = models.CharField(max_length=20, choices=FeedingType.choices)
-    initial_pain_area = models.CharField(max_length=100, blank=True)
+    
     recovery_location = models.CharField(max_length=100, blank=True)  
     partner_referral_consent = models.BooleanField(default=False) # 개인 정보 동의 필드
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    initial_pain_areas = models.JSONField(default=list, blank=True)  # JSON
+    initial_pain_area_custom_text = models.CharField(max_length=100, blank=True)  # "직접 입력" 선택 시 텍스트
 
     @property
     def postpartum_week(self): #산후주차
@@ -53,8 +65,8 @@ class DailyLog(models.Model):
         WORRIED = 'worried', '걱정스러운'
         ACTIVE = 'active', '활동적인'
 
-    class ActivityLevel(models.TextChoices):
-        LOW = 'low', '낮음'
+    class BreastMilkAmount(models.TextChoices):
+        LOW = 'low', '적음'
         NORMAL = 'normal', '보통'
         HIGH = 'high', '많음'
 
@@ -62,6 +74,12 @@ class DailyLog(models.Model):
         SAME = 'same', '평소와 같음'
         SLIGHT = 'slight', '약간 빠짐'
         HEAVY = 'heavy', '많이 빠짐'
+        
+    class SkinConditionChoices(models.IntegerChoices):
+        VERY_GOOD = 1, '매우 좋음'
+        GOOD = 2, '좋음'
+        MILD_TROUBLE = 3, '약간의 트러블'
+        SEVERE_TROUBLE = 4, '트러블 심함'
 
     episode = models.ForeignKey(Episode, on_delete=models.CASCADE, related_name='daily_logs')
     log_date = models.DateField()
@@ -73,11 +91,21 @@ class DailyLog(models.Model):
     breastfeeding = models.CharField(max_length=20, choices=Episode.FeedingType.choices, null=True, blank=True)
     medication = models.CharField(max_length=255, blank=True)
     exercise = models.CharField(max_length=255, blank=True)
-    activity_level = models.CharField(max_length=10, choices=ActivityLevel.choices, null=True, blank=True)
+    
     diet = models.JSONField(null=True, blank=True)  # {"breakfast": "...", "lunch": "...", "dinner": "..."}
     memo = models.TextField(blank=True)
+    
+    #활동량 수정
+    activity_hours = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    activity_type = models.CharField(max_length=100, blank=True)
 
-    skin_self_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    #모유량 수정
+    breast_milk_amount = models.CharField(max_length=10, choices=BreastMilkAmount.choices, null=True, blank=True)
+    breastfeeding_pain_score = models.PositiveSmallIntegerField(null=True, blank=True)  # 1~5
+    
+    #피부 상태 척도 수정
+    skin_self_score = models.PositiveSmallIntegerField(choices=SkinConditionChoices.choices, null=True, blank=True)
+
     hair_loss_status = models.CharField(max_length=20, choices=HairLossStatus.choices, null=True, blank=True)
     skin_symptom_tags = models.JSONField(null=True, blank=True)
     pelvic_floor_symptoms = models.JSONField(null=True, blank=True)

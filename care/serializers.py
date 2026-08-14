@@ -19,8 +19,29 @@ class EpisodeOnboardingSerializer(serializers.ModelSerializer):
             'partner_referral_consent',
             'postpartum_week',
             'created_at',
+            'initial_pain_areas', 
+            'initial_pain_area_custom_text',
         ]
         read_only_fields = ['id', 'created_at']
+        
+    def validate(self, attrs):
+        areas = attrs.get('initial_pain_areas', [])
+        custom_text = attrs.get('initial_pain_area_custom_text', '')
+
+        valid_values = [choice.value for choice in Episode.PainArea]
+        for area in areas:
+            if area not in valid_values:
+                raise serializers.ValidationError(f"'{area}'는 유효하지 않은 통증 부위입니다.")
+
+        # "특별한 통증 없음"은 다른 항목과 동시 선택 불가
+        if Episode.PainArea.NONE in areas and len(areas) > 1:
+            raise serializers.ValidationError("'특별한 통증 없음'은 다른 항목과 함께 선택할 수 없습니다.")
+
+        # "직접 입력" 선택했으면 텍스트 필수
+        if Episode.PainArea.CUSTOM in areas and not custom_text.strip():
+            raise serializers.ValidationError("'직접 입력'을 선택했으면 통증 부위를 입력해주세요.")
+
+        return attrs
 
     def validate_delivery_date(self, value):
         from datetime import date
@@ -43,13 +64,13 @@ class DailyLogSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'episode', 'created_at']
 
     def validate_pain_score(self, value):
-        if value is not None and not (0 <= value <= 10):
-            raise serializers.ValidationError("통증 점수는 0~10 사이여야 합니다.")
+        if value is not None and not (0 <= value <= 5):
+            raise serializers.ValidationError("통증 점수는 5 사이여야 합니다.")
         return value
 
     def validate_skin_self_score(self, value):
-        if value is not None and not (1 <= value <= 5):
-            raise serializers.ValidationError("피부 자가평가는 1~5점 사이여야 합니다.")
+        if value is not None and not (1 <= value <= 4):
+            raise serializers.ValidationError("피부 자가평가는 1~4점 사이여야 합니다.")
         return value
     
 class VoiceMemoSerializer(serializers.ModelSerializer):
