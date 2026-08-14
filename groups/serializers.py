@@ -36,3 +36,15 @@ class NotificationSettingSerializer(serializers.ModelSerializer):
             "notify_family_todo_incomplete",
             "notify_own_todo_incomplete",
         ]
+
+class GroupMemberSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source="user.user_id", read_only=True)
+    name = serializers.CharField(source="user.name", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+ 
+    class Meta:
+        model = Membership
+        fields = [
+            "membership_id", "user_id", "name", "email",
+            "role", "relation", "is_cohabiting", "is_primary", "joined_at",
+        ]
