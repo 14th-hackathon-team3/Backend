@@ -30,4 +30,9 @@ class InviteCodeCheckSerializer(serializers.Serializer):
 class NotificationSettingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Membership
-        fields = ["notify_todo_created", "notify_family_todo_completed", "notify_family_todo_incomplete"]
+        fields = [
+            "notify_todo_created",
+            "notify_family_todo_completed",
+            "notify_family_todo_incomplete",
+            "notify_own_todo_incomplete",
+        ]
