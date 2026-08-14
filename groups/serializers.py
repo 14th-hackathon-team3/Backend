@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Membership
+from .models import Membership, Group
  
  
 class GuardianOnboardingSerializer(serializers.ModelSerializer):
@@ -48,3 +48,14 @@ class GroupMemberSerializer(serializers.ModelSerializer):
             "membership_id", "user_id", "name", "email",
             "role", "relation", "is_cohabiting", "is_primary", "joined_at",
         ]
+
+class MyGroupSerializer(serializers.ModelSerializer):
+    mother_name = serializers.CharField(source="owner_user.name", read_only=True)
+    member_count = serializers.SerializerMethodField()
+ 
+    class Meta:
+        model = Group
+        fields = ["group_id", "mother_name", "invite_code", "invite_code_expired_at", "member_count"]
+ 
+    def get_member_count(self, obj):
+        return obj.memberships.count()

@@ -40,9 +40,13 @@ class UserSerializer(serializers.ModelSerializer):
     """응답용 - 비밀번호 절대 노출 안 함"""
     class Meta:
         model = User
-        fields = ["user_id", "email", "name", "phone", "user_type", "created_at"]
+        fields = ["user_id", "email", "name", "phone", "user_type", "profile_image", "created_at"]
  
- 
+class ProfileImageUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["profile_image"]
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     simplejwt 기본 로그인 serializer 확장.

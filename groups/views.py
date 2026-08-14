@@ -4,7 +4,7 @@ from rest_framework import generics, permissions
 from rest_framework.exceptions import NotFound, PermissionDenied
  
 from .models import Membership, Group
-from .serializers import GuardianOnboardingSerializer, InviteCodeCheckSerializer, NotificationSettingSerializer, GroupMemberSerializer
+from .serializers import GuardianOnboardingSerializer, InviteCodeCheckSerializer, NotificationSettingSerializer, GroupMemberSerializer, MyGroupSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
@@ -144,3 +144,15 @@ class GroupMemberRemoveView(generics.DestroyAPIView):
             raise PermissionDenied("소유자 본인은 제거할 수 없습니다.")
  
         return target
+
+class MyGroupView(generics.RetrieveAPIView):
+    """
+    GET /api/groups/my-group/
+    로그인한 유저(산모/보호자 공용)가 속한 그룹 정보 + 초대코드 조회.
+    프론트에서 이 invite_code를 가지고 자체 도메인 붙여서 공유 링크를 조립함.
+    """
+    serializer_class = MyGroupSerializer
+    permission_classes = [permissions.IsAuthenticated]
+ 
+    def get_object(self):
+        return get_my_group(self.request.user)
