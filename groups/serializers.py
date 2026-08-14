@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Membership
+from .models import Membership, Group
  
  
 class GuardianOnboardingSerializer(serializers.ModelSerializer):
@@ -30,4 +30,32 @@ class InviteCodeCheckSerializer(serializers.Serializer):
 class NotificationSettingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Membership
-        fields = ["notify_todo_created", "notify_family_todo_completed", "notify_family_todo_incomplete"]
+        fields = [
+            "notify_todo_created",
+            "notify_family_todo_completed",
+            "notify_family_todo_incomplete",
+            "notify_own_todo_incomplete",
+        ]
+
+class GroupMemberSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source="user.user_id", read_only=True)
+    name = serializers.CharField(source="user.name", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+ 
+    class Meta:
+        model = Membership
+        fields = [
+            "membership_id", "user_id", "name", "email",
+            "role", "relation", "is_cohabiting", "is_primary", "joined_at",
+        ]
+
+class MyGroupSerializer(serializers.ModelSerializer):
+    mother_name = serializers.CharField(source="owner_user.name", read_only=True)
+    member_count = serializers.SerializerMethodField()
+ 
+    class Meta:
+        model = Group
+        fields = ["group_id", "mother_name", "invite_code", "invite_code_expired_at", "member_count"]
+ 
+    def get_member_count(self, obj):
+        return obj.memberships.count()

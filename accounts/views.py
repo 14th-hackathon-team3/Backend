@@ -3,15 +3,16 @@ from django.shortcuts import render
 # Create your views here.
 from rest_framework import generics, permissions
 from rest_framework_simplejwt.views import TokenObtainPairView
- 
-from .serializers import SignupSerializer, CustomTokenObtainPairSerializer, UserSerializer, LogoutSerializer, SocialLoginSerializer
+from rest_framework.parsers import MultiPartParser, FormParser
+from .serializers import SignupSerializer, CustomTokenObtainPairSerializer, UserSerializer, LogoutSerializer, SocialLoginSerializer, ProfileImageUploadSerializer
 from .models import User
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from .services import SocialLoginService, SignupRequiredError, InvalidInviteCodeError
 from .tokens import issue_tokens_for_user
- 
+from rest_framework.views import APIView
+
 class SignupView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = SignupSerializer
@@ -79,3 +80,29 @@ class SocialLoginView(generics.GenericAPIView):
                 **tokens,
             }
         )
+
+class ProfileImageUploadView(generics.UpdateAPIView):
+    """
+    PATCH /api/accounts/me/photo/
+    multipart/form-data로 profile_image 파일 전송
+    """
+    serializer_class = ProfileImageUploadSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+ 
+    def get_object(self):
+        return self.request.user
+
+class WithdrawView(APIView):
+    """
+    DELETE /api/accounts/me/
+    soft delete: is_active=False로 비활성화.
+    이후 로그인 시도 시 자동으로 막힘 (simplejwt가 is_active 체크함).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+ 
+    def delete(self, request):
+        user = request.user
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+        return Response(status=204)

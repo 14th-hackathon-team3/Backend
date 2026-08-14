@@ -68,6 +68,7 @@ class Membership(models.Model):
     notify_todo_created = models.BooleanField(default=True) # todo 생성 알림
     notify_family_todo_completed = models.BooleanField(default=True) # 가족 todo 완료 알림
     notify_family_todo_incomplete = models.BooleanField(default=True) # 가족 todo 미완료 알림
+    notify_own_todo_incomplete = models.BooleanField(default=True) # 나의 todo 미달성 알림
     is_active = models.BooleanField(default=True)
     is_primary = models.BooleanField(default=False)  # 주보호자 여부
     is_cohabiting = models.BooleanField(default=False)

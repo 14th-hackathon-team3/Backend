@@ -1,10 +1,10 @@
 from django.shortcuts import render
 from django.db import transaction
 from rest_framework import generics, permissions
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
  
 from .models import Membership, Group
-from .serializers import GuardianOnboardingSerializer, InviteCodeCheckSerializer, NotificationSettingSerializer
+from .serializers import GuardianOnboardingSerializer, InviteCodeCheckSerializer, NotificationSettingSerializer, GroupMemberSerializer, MyGroupSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
@@ -90,3 +90,69 @@ class NotificationSettingView(generics.RetrieveUpdateAPIView):
         if not membership:
             raise NotFound("가입된 그룹이 없습니다.")
         return membership
+
+def get_my_group(user):
+    """
+    로그인한 유저(산모든 보호자든)가 속한 그룹을 반환.
+    - 산모(role=owner)면 본인이 owner인 그룹
+    - 보호자(role=member)면 본인이 속한 그룹
+    가장 최근 membership 기준 1개.
+    """
+    membership = Membership.objects.filter(user=user).order_by("-joined_at").first()
+    if not membership:
+        raise NotFound("가입된 그룹이 없습니다.")
+    return membership.group
+ 
+ 
+class GroupMemberListView(generics.ListAPIView):
+    """
+    GET /api/groups/members/
+    내 그룹에 속한 모든 멤버(산모+보호자) 목록.
+    """
+    serializer_class = GroupMemberSerializer
+    permission_classes = [permissions.IsAuthenticated]
+ 
+    def get_queryset(self):
+        group = get_my_group(self.request.user)
+        return Membership.objects.filter(group=group).select_related("user").order_by("-is_primary", "joined_at")
+ 
+ 
+class GroupMemberRemoveView(generics.DestroyAPIView):
+    """
+    DELETE /api/groups/members/<membership_id>/
+    산모(owner)만 그룹에서 특정 보호자를 제거할 수 있음.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_url_kwarg = "membership_id"
+ 
+    def get_object(self):
+        group = get_my_group(self.request.user)
+ 
+        # 요청자가 owner인지 확인 (보호자는 강퇴 권한 없음)
+        requester_membership = Membership.objects.filter(group=group, user=self.request.user).first()
+        if not requester_membership or requester_membership.role != Membership.Role.OWNER:
+            raise PermissionDenied("그룹 소유자만 멤버를 제거할 수 있습니다.")
+ 
+        target = Membership.objects.filter(
+            group=group, membership_id=self.kwargs["membership_id"]
+        ).first()
+        if not target:
+            raise NotFound("해당 멤버를 찾을 수 없습니다.")
+ 
+        # 본인(owner) 스스로는 강퇴 못 하게 방지
+        if target.role == Membership.Role.OWNER:
+            raise PermissionDenied("소유자 본인은 제거할 수 없습니다.")
+ 
+        return target
+
+class MyGroupView(generics.RetrieveAPIView):
+    """
+    GET /api/groups/my-group/
+    로그인한 유저(산모/보호자 공용)가 속한 그룹 정보 + 초대코드 조회.
+    프론트에서 이 invite_code를 가지고 자체 도메인 붙여서 공유 링크를 조립함.
+    """
+    serializer_class = MyGroupSerializer
+    permission_classes = [permissions.IsAuthenticated]
+ 
+    def get_object(self):
+        return get_my_group(self.request.user)

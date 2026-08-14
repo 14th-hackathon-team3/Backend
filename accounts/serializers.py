@@ -1,37 +1,52 @@
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
- 
+from django.db import transaction as transaction 
 from .models import User
- 
+from .services import create_group_membership_for_signup, InvalidInviteCodeError
  
 class SignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
+    invite_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
  
     class Meta:
         model = User
-        fields = ["user_id", "email", "name", "phone", "user_type", "password"]
+        fields = ["user_id", "email", "name", "phone", "user_type", "password", "invite_code"]
         read_only_fields = ["user_id"]
  
+    def validate(self, attrs):
+        if attrs.get("user_type") == User.UserType.GUARDIAN and not attrs.get("invite_code"):
+            raise serializers.ValidationError({"invite_code": "보호자 회원가입에는 초대코드가 필요합니다."})
+        return attrs
+ 
     def create(self, validated_data):
-        # UserManager.create_user가 set_password까지 처리하므로
-        # 반드시 이걸 통해서 생성해야 함 (그냥 User(**validated_data) 하면 비번 평문 저장됨)
-        return User.objects.create_user(
-            email=validated_data["email"],
-            name=validated_data["name"],
-            user_type=validated_data["user_type"],
-            password=validated_data["password"],
-            phone=validated_data.get("phone"),
-        )
+        invite_code = validated_data.pop("invite_code", None)
+        try:
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    email=validated_data["email"],
+                    name=validated_data["name"],
+                    user_type=validated_data["user_type"],
+                    password=validated_data["password"],
+                    phone=validated_data.get("phone"),
+                )
+                create_group_membership_for_signup(user, invite_code=invite_code)
+        except InvalidInviteCodeError as e:
+            raise serializers.ValidationError({"invite_code": str(e)})
+        return user
  
  
 class UserSerializer(serializers.ModelSerializer):
     """응답용 - 비밀번호 절대 노출 안 함"""
     class Meta:
         model = User
-        fields = ["user_id", "email", "name", "phone", "user_type", "created_at"]
+        fields = ["user_id", "email", "name", "phone", "user_type", "profile_image", "created_at"]
  
- 
+class ProfileImageUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["profile_image"]
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     simplejwt 기본 로그인 serializer 확장.
