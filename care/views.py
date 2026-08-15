@@ -84,13 +84,21 @@ class VoiceMemoUploadView(generics.GenericAPIView):
         if not audio_file:
             return Response({"error": "audio 파일이 필요합니다."}, status=400)
 
-        today_log, _ = DailyLog.objects.get_or_create(
-            episode=episode, log_date=date.today()
-        )
+        today_log, _ = DailyLog.objects.get_or_create(episode=episode, log_date=date.today())
+
+        before_state = {f: getattr(today_log, f) for f in
+                         ['emotion', 'sleep_hours', 'pain_score', 'pain_area', 'activity_hours', 'activity_type']}
 
         voice_memo = upload_and_transcribe(today_log, audio_file)
+        today_log.refresh_from_db()
+
+        auto_filled = [f for f in before_state if before_state[f] != getattr(today_log, f)]
+
         serializer = self.get_serializer(voice_memo)
-        return Response(serializer.data, status=201)
+        return Response({
+            **serializer.data,
+            "auto_filled_fields": auto_filled,  # 프론트가 "음성으로 자동 입력됨" 표시하는 용도
+        }, status=201)
     
 class GenerateDailyPlanView(generics.GenericAPIView):
     """POST /api/care/plans/generate/"""
