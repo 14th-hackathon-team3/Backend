@@ -91,3 +91,4 @@ class TodoSerializer(serializers.ModelSerializer):
                    'assignee_membership', 'completed_by', 'completed_at']
         read_only_fields = ['id', 'reason', 'order_index', 'assignee_membership', 'completed_by', 'completed_at']
         # content, is_skip, status만 산모가 수정 가능하게 열어둠
+        

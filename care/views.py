@@ -5,7 +5,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from .models import Episode, DailyLog, Todo, RecoveryPlan
 from .serializers import EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer, TodoUpdateSerializer, TodoSerializer
 from datetime import date
-from .services import upload_and_transcribe, generate_daily_plan
+from .services import upload_and_transcribe, generate_daily_plan, calculate_week_trend
 
 class EpisodeOnboardingView(generics.CreateAPIView):
     #산모 온보딩 정보 저장 API (POST)
@@ -187,3 +187,11 @@ class ConfirmAllTodosView(generics.GenericAPIView):# 혹시 몰라서 한 번에
             status=Todo.Status.DRAFT
         ).update(status=Todo.Status.CONFIRMED)
         return Response({"confirmed_count": updated})
+    
+class WeekTrendView(generics.GenericAPIView):
+    """GET /api/care/journey/week-trend/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        episode = get_active_episode(request.user)
+        return Response(calculate_week_trend(episode))

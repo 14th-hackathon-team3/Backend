@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import EpisodeOnboardingView, MyEpisodeView, DailyLogListCreateView, DailyLogDetailView, TodayLogView, VoiceMemoUploadView, GenerateDailyPlanView, TodoUpdateView, ConfirmDailyPlanView, TodoDetailView, ConfirmAllTodosView
+from .views import EpisodeOnboardingView, MyEpisodeView, DailyLogListCreateView, DailyLogDetailView, TodayLogView, VoiceMemoUploadView, GenerateDailyPlanView, TodoUpdateView, ConfirmDailyPlanView, TodoDetailView, ConfirmAllTodosView, WeekTrendView
 
 urlpatterns = [
     path('onboarding/', EpisodeOnboardingView.as_view(), name='episode-onboarding'),
@@ -13,4 +13,5 @@ urlpatterns = [
     path('plans/<int:plan_id>/confirm/', ConfirmDailyPlanView.as_view(), name='plan-confirm'),
     path('todos/<int:pk>/', TodoDetailView.as_view(), name='todo-detail'),
     path('plans/<int:plan_id>/confirm/', ConfirmAllTodosView.as_view(), name='confirm-all-todos'),
+    path('journey/week-trend/', WeekTrendView.as_view(), name='week-trend'),
 ]
