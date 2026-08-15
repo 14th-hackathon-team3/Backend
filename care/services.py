@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from django.db import transaction
 from pydantic import BaseModel, Field
 from groups.models import Membership, Group
+from typing import Optional
 
 openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
@@ -21,19 +22,28 @@ def upload_and_transcribe(daily_log: DailyLog, audio_file) -> VoiceMemo:
     try:
         with voice_memo.audio_file.open('rb') as f:
             transcript = openai_client.audio.transcriptions.create(
-                model="gpt-4o-mini-transcribe",  # 예산 넉넉하면 gpt-4o-transcribe로 교체
+                model="gpt-4o-mini-transcribe",  
                 file=f,
                 language="ko",
             )
         voice_memo.transcript_text = transcript.text
         voice_memo.status = VoiceMemo.Status.DONE
+        voice_memo.save()
+        
+        # 텍스트 변환 성공했으면 daily_log 자동 채움 시도
+        try:
+            extracted = extract_fields_from_voice(transcript.text)
+            apply_extracted_fields_to_log(daily_log, extracted)
+        except Exception as e:
+            # 자동 채움 실패해도 전사 결과 자체는 살려둠 (필수 기능 아님)
+            print(f"필드 자동 추출 실패: {e}")
+            
     except Exception as e:
         voice_memo.status = VoiceMemo.Status.FAILED
+        voice_memo.save()
         print(f"음성 변환 실패: {e}")
 
-    voice_memo.save()
     return voice_memo
-
 
 # ─────────────────────────────────────────
 # 1. 데이터 수집 + 결측 방어
@@ -376,6 +386,8 @@ def calculate_week_trend(episode: Episode) -> dict:
         diff = recent_avg - prev_avg
         ratio = diff / prev_avg
 
+        # 기준치 미달인 경우 triggered = False 되서 banners 리스트에 아무것도 append 되지 않음!!
+
         triggered = False
         if threshold_ratio is not None and abs(ratio) >= threshold_ratio:
             triggered = True
@@ -414,3 +426,75 @@ def calculate_week_trend(episode: Episode) -> dict:
         "emotion": emotion_values,
         "banners": banners,
     }
+    
+#음성 메모-> daily_log 자동 채움
+
+class ExtractedDailyLogFields(BaseModel):
+    emotion: Optional[str] = Field(None, description="happy/angry/low_energy/sad/depressed/confused/calm/moody/irritated/worried/active 중 하나. 언급 없으면 null")
+    sleep_hours: Optional[float] = Field(None, description="수면 시간(시간 단위, 소수 가능). 언급 없으면 null")
+    pain_score: Optional[int] = Field(None, description="통증 강도 1~5. 언급 없으면 null")
+    pain_area: Optional[str] = Field(None, description="통증 부위(자유텍스트). 언급 없으면 null")
+    activity_hours: Optional[float] = Field(None, description="활동 시간. 언급 없으면 null")
+    activity_type: Optional[str] = Field(None, description="활동 종류(예: 산책). 언급 없으면 null")
+    memo_summary: Optional[str] = Field(None, description="위 구조화 필드로 안 잡히는 나머지 내용을 1문장으로 요약. 없으면 null")
+
+
+def extract_fields_from_voice(transcript_text: str) -> ExtractedDailyLogFields:
+    completion = openai_client.chat.completions.parse(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "당신은 산모의 음성 기록에서 구조화된 정보를 추출하는 도우미입니다."},
+            {"role": "user", "content": f"""
+다음은 산모가 오늘 상태에 대해 말한 음성 기록입니다. 언급된 내용만 추출하고,
+언급되지 않은 항목은 반드시 null로 두세요. 없는 정보를 추측해서 채우지 마세요.
+
+[음성 기록 텍스트]
+{transcript_text}
+"""},
+        ],
+        response_format=ExtractedDailyLogFields,
+    )
+    return completion.choices[0].message.parsed
+
+
+EMOTION_VALID_VALUES = [c.value for c in DailyLog.Emotion]
+
+
+def apply_extracted_fields_to_log(daily_log: DailyLog, extracted: ExtractedDailyLogFields):
+    """AI가 음성에서 값을 찾아낸 필드만 덮어씀 (기존 값 유무와 무관하게 최신 상태로 갱신)"""
+    updated_fields = []
+
+    if extracted.emotion in EMOTION_VALID_VALUES:
+        daily_log.emotion = extracted.emotion
+        updated_fields.append('emotion')
+
+    if extracted.sleep_hours is not None:
+        daily_log.sleep_hours = extracted.sleep_hours
+        updated_fields.append('sleep_hours')
+
+    if extracted.pain_score is not None and 1 <= extracted.pain_score <= 5: # 통증 강도 혹시 몰라서 1~5로 강제
+        daily_log.pain_score = extracted.pain_score
+        updated_fields.append('pain_score')
+
+    if extracted.pain_area:
+        daily_log.pain_area = extracted.pain_area
+        updated_fields.append('pain_area')
+
+    if extracted.activity_hours is not None:
+        daily_log.activity_hours = extracted.activity_hours
+        updated_fields.append('activity_hours')
+
+    if extracted.activity_type:
+        daily_log.activity_type = extracted.activity_type
+        updated_fields.append('activity_type')
+        
+        
+    # memo는 덮어쓰지 않고 이어붙임 (기존 텍스트 입력 메모 보존)
+    if extracted.memo_summary:
+        daily_log.memo = f"{daily_log.memo}\n{extracted.memo_summary}".strip() if daily_log.memo else extracted.memo_summary
+        updated_fields.append('memo')
+
+    if updated_fields:
+        daily_log.save(update_fields=updated_fields)
+
+    return updated_fields
