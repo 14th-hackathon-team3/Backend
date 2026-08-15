@@ -340,3 +340,77 @@ def generate_daily_plan(episode: Episode) -> RecoveryPlan:
             )
 
     return plan
+
+def calculate_week_trend(episode: Episode) -> dict:
+    """최근 7일 데이터를 그래프용 배열 + 위험 배너 문구로 정리"""
+    logs = list(
+        DailyLog.objects.filter(episode=episode).order_by('log_date')[:7]
+    )
+
+    dates, sleep_values, pain_values, emotion_values = [], [], [], []
+    for log in logs:
+        dates.append(str(log.log_date))
+        sleep_values.append(float(log.sleep_hours) if log.sleep_hours is not None else None)
+        pain_values.append(log.pain_score)
+        emotion_values.append(log.emotion)
+
+    banners = []
+
+    def trend_banner(values: list, label: str, direction_down_msg: str, direction_up_msg: str, threshold_ratio: float | None = None, threshold_abs: float | None = None):
+        # None 제외하고 최근 3일 vs 직전 3일 비교
+        clean = [(i, v) for i, v in enumerate(values) if v is not None]
+        if len(clean) < 6:
+            return  # 데이터 부족하면 배너 생성 안 함 (억지 판단 방지)
+
+        recent_vals = [v for i, v in clean[-3:]]
+        prev_vals = [v for i, v in clean[-6:-3]]
+        if len(recent_vals) < 3 or len(prev_vals) < 3:
+            return
+
+        recent_avg = sum(recent_vals) / len(recent_vals)
+        prev_avg = sum(prev_vals) / len(prev_vals)
+
+        if prev_avg == 0:
+            return
+
+        diff = recent_avg - prev_avg
+        ratio = diff / prev_avg
+
+        triggered = False
+        if threshold_ratio is not None and abs(ratio) >= threshold_ratio:
+            triggered = True
+        if threshold_abs is not None and abs(diff) >= threshold_abs:
+            triggered = True
+
+        if triggered:
+            msg = direction_down_msg if diff < 0 else direction_up_msg
+            banners.append({
+                "type": label,
+                "message": msg,
+                "recent_avg": round(recent_avg, 1),
+                "prev_avg": round(prev_avg, 1),
+            })
+
+    # 수면 ±15% 이상
+    trend_banner(
+        sleep_values, "sleep",
+        direction_down_msg="최근 수면시간이 감소하고 있어요",
+        direction_up_msg="최근 수면시간이 늘어나고 있어요",
+        threshold_ratio=0.15,
+    )
+
+    # 통증 ±1점 이상
+    trend_banner(
+        pain_values, "pain",
+        direction_down_msg="통증이 완화되고 있어요",
+        direction_up_msg="통증이 심해지고 있어요",
+        threshold_abs=1,
+    )
+
+    return {
+        "dates": dates,
+        "sleep": sleep_values,
+        "pain": pain_values,
+        "emotion": emotion_values,
+        "banners": banners,
+    }
