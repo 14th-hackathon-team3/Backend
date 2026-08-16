@@ -92,3 +92,13 @@ class TodoSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'reason', 'order_index', 'assignee_membership', 'completed_by', 'completed_at']
         # content, is_skip, status만 산모가 수정 가능하게 열어둠
         
+class EpisodeUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Episode
+        fields = ['delivery_date', 'discharge_date']  # 산모가 실사용상 고칠 만한 값만 한정
+
+    def validate_delivery_date(self, value):
+        from datetime import date
+        if value > date.today():
+            raise serializers.ValidationError("출산일은 미래일 수 없습니다.")
+        return value
