@@ -101,3 +101,14 @@ class TodoSerializer(serializers.ModelSerializer):
 
     def get_assignee_name(self, obj):
         return obj.assignee_membership.user.name if obj.assignee_membership else None
+      
+class EpisodeUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Episode
+        fields = ['delivery_date', 'discharge_date']  # 산모가 실사용상 고칠 만한 값만 한정
+
+    def validate_delivery_date(self, value):
+        from datetime import date
+        if value > date.today():
+            raise serializers.ValidationError("출산일은 미래일 수 없습니다.")
+        return value
