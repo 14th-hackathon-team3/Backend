@@ -83,15 +83,25 @@ class TodoUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Todo
         fields = ['content']  # 산모가 고칠 수 있는 건 내용뿐, reason/assignee는 AI 판단 그대로 유지
-        
+            
 class TodoSerializer(serializers.ModelSerializer):
+    completed_by_name = serializers.SerializerMethodField()
+    assignee_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Todo
         fields = ['id', 'content', 'reason', 'is_skip', 'status', 'order_index',
-                   'assignee_membership', 'completed_by', 'completed_at']
-        read_only_fields = ['id', 'reason', 'order_index', 'assignee_membership', 'completed_by', 'completed_at']
-        # content, is_skip, status만 산모가 수정 가능하게 열어둠
-        
+                   'assignee_membership', 'assignee_name',
+                   'completed_by', 'completed_by_name', 'completed_at', 'visibility']
+        read_only_fields = ['id', 'reason', 'order_index', 'assignee_membership', 'assignee_name',
+                             'completed_by', 'completed_by_name', 'completed_at']
+
+    def get_completed_by_name(self, obj):
+        return obj.completed_by.user.name if obj.completed_by else None  # User 모델 실제 필드명 확인 필요
+
+    def get_assignee_name(self, obj):
+        return obj.assignee_membership.user.name if obj.assignee_membership else None
+      
 class EpisodeUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Episode

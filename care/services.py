@@ -7,6 +7,7 @@ from django.db import transaction
 from pydantic import BaseModel, Field
 from groups.models import Membership, Group
 from typing import Optional
+from rest_framework.exceptions import NotFound
 
 openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
@@ -215,10 +216,10 @@ def build_mother_prompt(episode: Episode, logs_summary: list[dict]) -> str:
 1. ai_summary: 수면/통증/식사/감정의 변화 흐름을 2~3문장으로. "~한 것으로 보여요", "~하는 흐름이에요" 톤 유지.
    의학적 진단명(산후우울증, 감염증 등) 절대 사용 금지. 변화 없는 항목은 "안정적으로 유지되고 있다"고 표현.
 2. bottleneck: 우선순위 판단 기준은 수면 > 통증 > 감정 > 식사 > 활동량 순으로, 가장 신경 써야 할 요인 하나만 한 줄로.
-3. reasoning: 왜 그 병목을 골랐는지 근거를 1~2문장으로 (이건 화면에 바로 안 보이고 버튼 눌러야 보임).
+3. reasoning: 왜 그 병목 건 화면에 바로 안 보이고 버튼 눌러야 보임).
 4. tomorrow_goal: 내일 지향할 목표 한 줄.
 5. mother_todos: 정확히 3개. 비용 발생 금지, 하루 안에 끝낼 수 있는 구체적 행동 단위로.
-   좋은 예: "침대에서 일어나기 전 5분간 가벼운 스트레칭 하기"
+   좋은 예: "침 대에서 일어나기 전 5분간 가벼운 스트레칭 하기"
    나쁜 예: "충분히 휴식하기" (너무 추상적)
 """
 
@@ -498,3 +499,28 @@ def apply_extracted_fields_to_log(daily_log: DailyLog, extracted: ExtractedDaily
         daily_log.save(update_fields=updated_fields)
 
     return updated_fields
+
+def get_episode_and_membership(user):
+    """
+    로그인한 유저가 산모(owner)든 보호자(member)든 관계없이
+    그 유저가 속한 그룹의 episode와 membership을 함께 반환.
+    """
+    membership = (
+        Membership.objects
+        .filter(user=user, is_active=True)
+        .order_by('-joined_at')
+        .first()
+    )
+    if not membership:
+        raise NotFound("가입된 그룹이 없습니다.")
+
+    episode = (
+        Episode.objects
+        .filter(user=membership.group.owner_user, is_active=True)
+        .order_by('-created_at')
+        .first()
+    )
+    if not episode:
+        raise NotFound("진행 중인 episode가 없습니다.")
+
+    return episode, membership

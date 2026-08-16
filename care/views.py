@@ -2,10 +2,11 @@ from django.shortcuts import render, get_object_or_404
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied
-from .models import Episode, DailyLog, Todo, RecoveryPlan
+from .models import Episode, DailyLog, Todo, RecoveryPlan, Membership
 from .serializers import EpisodeUpdateSerializer, EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer, TodoUpdateSerializer, TodoSerializer
 from datetime import date
-from .services import upload_and_transcribe, generate_daily_plan, calculate_week_trend
+from .services import upload_and_transcribe, generate_daily_plan, calculate_week_trend, get_episode_and_membership
+from django.utils import timezone
 
 class EpisodeOnboardingView(generics.CreateAPIView):
     #산모 온보딩 정보 저장 API (POST)
@@ -172,7 +173,7 @@ class ConfirmDailyPlanView(generics.GenericAPIView):
             "confirmed_count": updated,
         }, status=200)
         
-class TodoDetailView(generics.RetrieveUpdateAPIView):
+class TodoDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     GET   /api/care/todos/<id>/   개별 todo 조회
     PATCH /api/care/todos/<id>/   개별 todo 수정 (content, is_skip 등)
@@ -181,9 +182,15 @@ class TodoDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # 본인 episode에 속한 todo만 수정 가능하게 제한
-        episode = get_active_episode(self.request.user)
+        episode, membership = get_episode_and_membership(self.request.user)
+        self.membership = membership
         return Todo.objects.filter(recovery_plan__episode=episode)
+
+    def perform_destroy(self, instance):
+        # 삭제는 산모(owner)만 가능하게 제한 — 보호자가 배정받은 할일을 임의로 지우지 못하게
+        if self.membership.role != Membership.Role.OWNER:
+            raise PermissionDenied("삭제는 산모만 가능합니다.")
+        instance.delete()
     
 class ConfirmAllTodosView(generics.GenericAPIView):# 혹시 몰라서 한 번에 확정 짓는 것도 만들어 놓음
     """POST /api/care/plans/<plan_id>/confirm/  - 오늘 플랜의 모든 draft todo를 한번에 확정"""
@@ -205,3 +212,69 @@ class WeekTrendView(generics.GenericAPIView):
     def get(self, request):
         episode = get_active_episode(request.user)
         return Response(calculate_week_trend(episode))
+    
+class TodayTodoListView(generics.GenericAPIView):
+    """GET /api/care/todos/today/ - 산모/보호자 모두 조회 가능"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        episode, membership = get_episode_and_membership(request.user)
+        plan = RecoveryPlan.objects.filter(episode=episode, plan_date=date.today()).first()
+
+        if not plan:
+            return Response({"mother_todos": [], "family_todos": [], "message": "오늘 생성된 플랜이 아직 없어요."})
+
+        mother_qs = plan.todos.filter(assignee_membership__isnull=True)
+        family_qs = plan.todos.filter(assignee_membership__isnull=False)
+
+        # 보호자(role=member)는 산모가 '비공개' 설정한 항목을 볼 수 없음
+        if membership.role != Membership.Role.OWNER:
+            mother_qs = mother_qs.filter(visibility=Todo.Visibility.PUBLIC)
+            family_qs = family_qs.filter(visibility=Todo.Visibility.PUBLIC)
+
+        return Response({
+            "plan_id": plan.pk,
+            "bottleneck": plan.bottleneck,
+            "mother_todos": TodoSerializer(mother_qs, many=True).data,
+            "family_todos": TodoSerializer(family_qs, many=True).data,
+            "my_role": membership.role,
+        })
+        
+class TodoVisibilityToggleView(generics.GenericAPIView):
+    """PATCH /api/care/todos/<id>/visibility/  body: {"visibility": "private"}"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        episode, membership = get_episode_and_membership(request.user)
+
+        # 비공개 설정은 산모(owner) 본인만 가능 — 보호자가 다른 항목을 숨길 순 없음
+        if membership.role != Membership.Role.OWNER:
+            return Response({"error": "비공개 설정은 산모만 변경할 수 있습니다."}, status=403)
+
+        todo = get_object_or_404(Todo, pk=pk, recovery_plan__episode=episode)
+        visibility = request.data.get('visibility')
+        if visibility not in [Todo.Visibility.PUBLIC, Todo.Visibility.PRIVATE]:
+            return Response({"error": "visibility는 public 또는 private이어야 합니다."}, status=400)
+
+        todo.visibility = visibility
+        todo.save(update_fields=['visibility'])
+        return Response({"id": todo.pk, "visibility": todo.visibility})
+    
+class TodoCheckToggleView(generics.GenericAPIView):
+    """POST /api/care/todos/<id>/check/ - 체크박스 토글 (완료 ↔ 완료취소)"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        episode, membership = get_episode_and_membership(request.user)
+        todo = get_object_or_404(Todo, pk=pk, recovery_plan__episode=episode)
+
+        if todo.completed_by_id == membership.pk:
+            # 본인이 체크한 걸 다시 누르면 취소
+            todo.completed_by = None
+            todo.completed_at = None
+        else:
+            todo.completed_by = membership
+            todo.completed_at = timezone.now()
+
+        todo.save(update_fields=['completed_by', 'completed_at'])
+        return Response(TodoSerializer(todo).data)
