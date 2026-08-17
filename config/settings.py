@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'corsheaders',
     'accounts',
     'groups',
     'content',
@@ -72,6 +73,7 @@ SPECTACULAR_SETTINGS = {
 }
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -79,6 +81,13 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+CORS_ALLOWED_ORIGINS = [ # cross-site 요청을 허용하는 호스트
+    'https://frontend-b35akp0m6-jang-yeseon-s-projects.vercel.app/',
+    'https://frontend-qhpxivrye-jang-yeseon-s-projects.vercel.app/',
+    'http://localhost:8000',
+    'http://127.0.0.1:9000/',
 ]
 
 ROOT_URLCONF = 'config.urls'
