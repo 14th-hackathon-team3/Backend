@@ -4,7 +4,7 @@ from django.shortcuts import render
 from rest_framework import generics, permissions
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.parsers import MultiPartParser, FormParser
-from .serializers import SignupSerializer, CustomTokenObtainPairSerializer, UserSerializer, LogoutSerializer, SocialLoginSerializer, ProfileImageUploadSerializer
+from .serializers import SignupSerializer, CustomTokenObtainPairSerializer, UserSerializer, UserUpdateSerializer, LogoutSerializer, SocialLoginSerializer, ProfileImageUploadSerializer
 from .models import User
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -25,13 +25,14 @@ class LoginView(TokenObtainPairView):
     permission_classes = [permissions.AllowAny]
  
  
-class MeView(generics.RetrieveAPIView):
+class MeView(generics.RetrieveUpdateAPIView):
     """로그인한 본인 정보 확인용 (Authorization: Bearer <access> 헤더 필요)"""
-    serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
  
     def get_object(self):
         return self.request.user
+    def get_serializer_class(self):
+        return UserUpdateSerializer if self.request.method in ("PUT", "PATCH") else UserSerializer
 
 class LogoutView(generics.GenericAPIView):
     """POST { "refresh": "<refresh token>" } -> refresh token 블랙리스트 등록"""

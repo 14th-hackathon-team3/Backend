@@ -3,7 +3,12 @@ from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied
 from .models import Episode, DailyLog, Todo, RecoveryPlan
+<<<<<<< HEAD
 from .serializers import EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer, TodoUpdateSerializer, TodoSerializer
+=======
+from groups.models import Membership
+from .serializers import EpisodeUpdateSerializer, EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer, TodoUpdateSerializer, TodoSerializer
+>>>>>>> origin/develop
 from datetime import date
 from .services import upload_and_transcribe, generate_daily_plan, calculate_week_trend, get_episode_and_membership
 from django.utils import timezone
@@ -19,14 +24,16 @@ class EpisodeOnboardingView(generics.CreateAPIView):
         serializer.save(user=self.request.user)
 
 
-class MyEpisodeView(generics.RetrieveAPIView):
+class MyEpisodeView(generics.RetrieveUpdateAPIView):
     #현재 산모의 온보딩 정보 조회 API (GET)
-    serializer_class = EpisodeOnboardingSerializer
+    #serializer_class = EpisodeOnboardingSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
         return Episode.objects.filter(user=self.request.user, is_active=True).latest('created_at')
-
+    
+    def get_serializer_class(self):
+        return EpisodeUpdateSerializer if self.request.method in ("PUT", "PATCH") else EpisodeOnboardingSerializer
 
 def get_active_episode(user):
     episode = Episode.objects.filter(user=user, is_active=True).order_by('-created_at').first()
