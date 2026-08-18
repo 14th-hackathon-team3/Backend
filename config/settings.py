@@ -88,12 +88,11 @@ MIDDLEWARE = [
 ]
 
 CORS_ALLOWED_ORIGINS = [ # cross-site 요청을 허용하는 호스트
-    'https://frontend-b35akp0m6-jang-yeseon-s-projects.vercel.app/',
-    'https://frontend-qhpxivrye-jang-yeseon-s-projects.vercel.app/',
+    'https://frontend-b35akp0m6-jang-yeseon-s-projects.vercel.app',
+    'https://frontend-qhpxivrye-jang-yeseon-s-projects.vercel.app',
     'http://localhost:8000',
-    'http://127.0.0.1:9000/',
+    'http://127.0.0.1:9000',
     "http://localhost:5173",
-    "http://localhost:5173/",
     "http://127.0.0.1:5173",
 ]
 
