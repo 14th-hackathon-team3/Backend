@@ -57,7 +57,6 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",  # 로그아웃/재발급 무효화용
     'drf_spectacular',
-    'corsheaders',
 ]
 
 REST_FRAMEWORK = {
