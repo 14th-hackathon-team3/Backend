@@ -2,11 +2,12 @@ from django.shortcuts import render, get_object_or_404
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied
-from .models import Episode, DailyLog, Todo, RecoveryPlan, Membership
+from .models import Episode, DailyLog, Todo, RecoveryPlan
 from .serializers import EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer, TodoUpdateSerializer, TodoSerializer
 from datetime import date
 from .services import upload_and_transcribe, generate_daily_plan, calculate_week_trend, get_episode_and_membership
 from django.utils import timezone
+from groups.models import Membership
 
 class EpisodeOnboardingView(generics.CreateAPIView):
     #산모 온보딩 정보 저장 API (POST)

@@ -14,7 +14,7 @@ class EpisodeOnboardingSerializer(serializers.ModelSerializer):
             'birth_order',
             'older_child_age',
             'initial_feeding_type',
-            'initial_pain_area',
+            
             'recovery_location',
             'partner_referral_consent',
             'postpartum_week',
