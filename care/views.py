@@ -3,12 +3,8 @@ from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied
 from .models import Episode, DailyLog, Todo, RecoveryPlan
-<<<<<<< HEAD
-from .serializers import EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer, TodoUpdateSerializer, TodoSerializer
-=======
-from groups.models import Membership
 from .serializers import EpisodeUpdateSerializer, EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer, TodoUpdateSerializer, TodoSerializer
->>>>>>> origin/develop
+from groups.models import Membership
 from datetime import date
 from .services import upload_and_transcribe, generate_daily_plan, calculate_week_trend, get_episode_and_membership
 from django.utils import timezone
