@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",  # 로그아웃/재발급 무효화용
     'drf_spectacular',
+    'corsheaders',
 ]
 
 REST_FRAMEWORK = {
@@ -182,3 +183,7 @@ environ.Env.read_env(BASE_DIR / ".env")
 KAKAO_CLIENT_ID = env("KAKAO_CLIENT_ID")
 KAKAO_CLIENT_SECRET = env("KAKAO_CLIENT_SECRET")
 KAKAO_REDIRECT_URI = env("KAKAO_REDIRECT_URI")
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+]

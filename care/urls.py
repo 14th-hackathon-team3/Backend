@@ -17,7 +17,7 @@ urlpatterns = [
     path('plans/<int:plan_id>/confirm/', ConfirmAllTodosView.as_view(), name='confirm-all-todos'),
     path('journey/week-trend/', WeekTrendView.as_view(), name='week-trend'),
     path('todos/today/', TodayTodoListView.as_view(), name='todos-today'),
-path('todos/<int:pk>/', TodoDetailView.as_view(), name='todo-detail'),
-path('todos/<int:pk>/visibility/', TodoVisibilityToggleView.as_view(), name='todo-visibility'),
-path('todos/<int:pk>/check/', TodoCheckToggleView.as_view(), name='todo-check'),
-]
+    path('todos/<int:pk>/', TodoDetailView.as_view(), name='todo-detail'),
+    path('todos/<int:pk>/visibility/', TodoVisibilityToggleView.as_view(), name='todo-visibility'),
+    path('todos/<int:pk>/check/', TodoCheckToggleView.as_view(), name='todo-check'),
+    ]

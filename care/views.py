@@ -8,6 +8,7 @@ from .serializers import EpisodeUpdateSerializer, EpisodeOnboardingSerializer, D
 from datetime import date
 from .services import upload_and_transcribe, generate_daily_plan, calculate_week_trend, get_episode_and_membership
 from django.utils import timezone
+from groups.models import Membership
 
 class EpisodeOnboardingView(generics.CreateAPIView):
     #산모 온보딩 정보 저장 API (POST)
