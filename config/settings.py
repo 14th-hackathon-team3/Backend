@@ -89,7 +89,12 @@ CORS_ALLOWED_ORIGINS = [ # cross-site 요청을 허용하는 호스트
     'https://frontend-qhpxivrye-jang-yeseon-s-projects.vercel.app/',
     'http://localhost:8000',
     'http://127.0.0.1:9000/',
+    "http://localhost:5173",
+    "http://localhost:5173/",
+    "http://127.0.0.1:5173",
 ]
+
+CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = 'config.urls'
 
@@ -183,8 +188,3 @@ environ.Env.read_env(BASE_DIR / ".env")
 KAKAO_CLIENT_ID = env("KAKAO_CLIENT_ID")
 KAKAO_CLIENT_SECRET = env("KAKAO_CLIENT_SECRET")
 KAKAO_REDIRECT_URI = env("KAKAO_REDIRECT_URI")
-
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-]
-CORS_ALLOW_CREDENTIALS = True
