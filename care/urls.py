@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import (TodayAnalysisView, VoiceMemoDetailView, EpisodeOnboardingView, MyEpisodeView, DailyLogListCreateView, DailyLogDetailView, TodayLogView, 
+from .views import (TrackingCategoryVisibilityView, TodayAnalysisView, VoiceMemoDetailView, EpisodeOnboardingView, MyEpisodeView, DailyLogListCreateView, DailyLogDetailView, TodayLogView, 
                      GenerateDailyPlanView, TodoUpdateView, ConfirmDailyPlanView, TodoDetailView, 
                     ConfirmAllTodosView, WeekTrendView,TodayTodoListView, TodoVisibilityToggleView, TodoCheckToggleView, VoiceMemoListView, VoiceMemoListCreateView )
 
@@ -23,4 +23,5 @@ urlpatterns = [
     #path('voice-memos/', VoiceMemoListView.as_view(), name='voice-memo-list'),
     path('voice-memos/', VoiceMemoListCreateView.as_view(), name='voice-memo-list-create'),
     path('voice-memos/<int:pk>/', VoiceMemoDetailView.as_view(), name='voice-memo-detail'),
+path('journey/tracking-visibility/', TrackingCategoryVisibilityView.as_view(), name='tracking-visibility'),
     ]

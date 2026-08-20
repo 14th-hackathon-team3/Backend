@@ -361,3 +361,43 @@ class TodayAnalysisView(generics.GenericAPIView):
             "tomorrow_goal": plan.tomorrow_goal,
         })
 
+class TrackingCategoryVisibilityView(generics.GenericAPIView):
+    """PATCH /api/care/journey/tracking-visibility/  body: {"hidden_categories": ["sleep", "pain"]}"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    VALID_CATEGORIES = {"sleep", "pain", "emotion"}
+
+    def patch(self, request):
+        episode, membership = get_episode_and_membership(request.user)
+
+        if membership.role != Membership.Role.OWNER:
+            return Response({"error": "비공개 설정은 산모만 변경할 수 있습니다."}, status=403)
+
+        hidden = request.data.get("hidden_categories")
+        if not isinstance(hidden, list):
+            return Response({"error": "hidden_categories는 리스트여야 합니다."}, status=400)
+
+        invalid = [c for c in hidden if c not in self.VALID_CATEGORIES]
+        if invalid:
+            return Response({"error": f"유효하지 않은 카테고리: {invalid}"}, status=400)
+
+        episode.hidden_tracking_categories = hidden
+        episode.save(update_fields=["hidden_tracking_categories"])
+        return Response({"hidden_tracking_categories": episode.hidden_tracking_categories})
+
+class WeekTrendView(generics.GenericAPIView):
+    """GET /api/care/journey/week-trend/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        episode, membership = get_episode_and_membership(request.user)
+        data = calculate_week_trend(episode)
+
+        if membership.role != Membership.Role.OWNER:
+            hidden = episode.hidden_tracking_categories or []
+            for category in hidden:
+                data.pop(category, None)
+                # 해당 카테고리의 위험 배너도 같이 숨김
+                data["banners"] = [b for b in data["banners"] if b["type"] != category]
+
+        return Response(data)
