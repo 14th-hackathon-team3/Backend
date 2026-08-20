@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Episode, DailyLog, VoiceMemo, Todo
 from django.utils import timezone
+from groups.models import Membership
 
 class EpisodeOnboardingSerializer(serializers.ModelSerializer):
     postpartum_week = serializers.ReadOnlyField()  # 계산값이라 읽기 전용으로만 응답에 포함
@@ -52,6 +53,14 @@ class EpisodeOnboardingSerializer(serializers.ModelSerializer):
     
     
 class DailyLogSerializer(serializers.ModelSerializer):
+    # 비공개 가능한 필드 화이트리스트 (id, episode, log_date, created_at, private_fields 자체는 제외)
+    HIDEABLE_FIELDS = {
+        'emotion', 'sleep_hours', 'pain_score', 'pain_area',
+        'breastfeeding', 'medication', 'exercise', 'diet', 'memo',
+        'skin_self_score', 'hair_loss_status',
+        'skin_symptom_tags', 'pelvic_floor_symptoms',
+    }
+
     class Meta:
         model = DailyLog
         fields = [
@@ -60,19 +69,33 @@ class DailyLogSerializer(serializers.ModelSerializer):
             'breastfeeding', 'medication', 'exercise', 'diet', 'memo',
             'skin_self_score', 'hair_loss_status',
             'skin_symptom_tags', 'pelvic_floor_symptoms',
+            'private_fields',          # ← 추가
             'created_at',
         ]
         read_only_fields = ['id', 'episode', 'created_at']
 
-    def validate_pain_score(self, value):
-        if value is not None and not (0 <= value <= 5):
-            raise serializers.ValidationError("통증 점수는 5 사이여야 합니다.")
+    def validate_private_fields(self, value):
+        if value is None:
+            return value
+        if not isinstance(value, list):
+            raise serializers.ValidationError("private_fields는 리스트여야 합니다.")
+        invalid = [f for f in value if f not in self.HIDEABLE_FIELDS]
+        if invalid:
+            raise serializers.ValidationError(f"숨길 수 없는 필드입니다: {invalid}")
         return value
 
-    def validate_skin_self_score(self, value):
-        if value is not None and not (1 <= value <= 4):
-            raise serializers.ValidationError("피부 자가평가는 1~4점 사이여야 합니다.")
-        return value
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        # 가족(보호자)이 조회할 때는 private_fields에 해당하는 값 자체를 응답에서 제거
+        request = self.context.get('request')
+        membership = self.context.get('membership')
+        if request and membership and membership.role != Membership.Role.OWNER:
+            for field_name in (instance.private_fields or []):
+                data.pop(field_name, None)
+            data.pop('private_fields', None)  # 가족한테는 뭐가 숨겨졌는지도 안 보여줌
+
+        return data
      
 class VoiceMemoSerializer(serializers.ModelSerializer):
     daily_log_id = serializers.IntegerField(source='daily_log.pk', read_only=True)

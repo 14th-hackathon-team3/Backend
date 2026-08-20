@@ -41,6 +41,7 @@ class Episode(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     initial_pain_areas = models.JSONField(default=list, blank=True)  # JSON
     initial_pain_area_custom_text = models.CharField(max_length=100, blank=True)  # "직접 입력" 선택 시 텍스트
+    hidden_tracking_categories = models.JSONField(null=True, blank=True)
 
     @property
     def postpartum_week(self): #산후주차

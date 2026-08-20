@@ -39,29 +39,32 @@ def get_active_episode(user):
     return episode
 
 class DailyLogListCreateView(generics.ListCreateAPIView):
-   
     serializer_class = DailyLogSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self): #최근 기록 목록 조회(최신순)
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        episode, membership = get_episode_and_membership(self.request.user)
+        context['membership'] = membership
+        return context
+
+    def get_queryset(self):
         episode, _ = get_episode_and_membership(self.request.user)
         queryset = DailyLog.objects.filter(episode=episode)
-
-        # ?days=7 쿼리파라미터로 최근 N일만 조회 가능하게
         days = self.request.query_params.get('days')
         if days:
             queryset = queryset[:int(days)]
         return queryset
 
     def create(self, request, *args, **kwargs):
-        episode = get_active_episode(request.user)
-        log_date = request.data.get('log_date', timezone.localdate().isoformat())
+        episode, membership = get_episode_and_membership(request.user)
 
-        # 오늘 기록이 이미 있으면 update, 없으면 create
-        instance, created = DailyLog.objects.get_or_create(
-            episode=episode,
-            log_date=log_date,
-        )
+        # private_fields는 산모(owner)만 설정 가능 — 보호자가 넘겨도 무시
+        if 'private_fields' in request.data and membership.role != Membership.Role.OWNER:
+            return Response({"error": "비공개 설정은 산모만 변경할 수 있습니다."}, status=403)
+
+        log_date = request.data.get('log_date', timezone.localdate().isoformat())
+        instance, created = DailyLog.objects.get_or_create(episode=episode, log_date=log_date)
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save(episode=episode)
@@ -70,13 +73,24 @@ class DailyLogListCreateView(generics.ListCreateAPIView):
         return Response(serializer.data, status=status_code)
     
 class DailyLogDetailView(generics.RetrieveUpdateAPIView):
-   
     serializer_class = DailyLogSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        episode, membership = get_episode_and_membership(self.request.user)
+        context['membership'] = membership
+        return context
+
     def get_queryset(self):
-        episode = get_active_episode(self.request.user)
+        episode, _ = get_episode_and_membership(self.request.user)
         return DailyLog.objects.filter(episode=episode)
+
+    def update(self, request, *args, **kwargs):
+        _, membership = get_episode_and_membership(request.user)
+        if 'private_fields' in request.data and membership.role != Membership.Role.OWNER:
+            return Response({"error": "비공개 설정은 산모만 변경할 수 있습니다."}, status=403)
+        return super().update(request, *args, **kwargs)
     
     
 class VoiceMemoListCreateView(generics.ListCreateAPIView):
@@ -236,13 +250,13 @@ class ConfirmAllTodosView(generics.GenericAPIView):# 혹시 몰라서 한 번에
         ).update(status=Todo.Status.CONFIRMED)
         return Response({"confirmed_count": updated})
     
-class WeekTrendView(generics.GenericAPIView):
-    """GET /api/care/journey/week-trend/"""
-    permission_classes = [permissions.IsAuthenticated]
+# class WeekTrendView(generics.GenericAPIView):
+#     """GET /api/care/journey/week-trend/"""
+#     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request):
-        episode, _ = get_episode_and_membership(request.user)
-        return Response(calculate_week_trend(episode))
+#     def get(self, request):
+#         episode, _ = get_episode_and_membership(request.user)
+#         return Response(calculate_week_trend(episode))
     
 class TodayTodoListView(generics.GenericAPIView):
     """GET /api/care/todos/today/ - 산모/보호자 모두 조회 가능"""
@@ -347,3 +361,43 @@ class TodayAnalysisView(generics.GenericAPIView):
             "tomorrow_goal": plan.tomorrow_goal,
         })
 
+class TrackingCategoryVisibilityView(generics.GenericAPIView):
+    """PATCH /api/care/journey/tracking-visibility/  body: {"hidden_categories": ["sleep", "pain"]}"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    VALID_CATEGORIES = {"sleep", "pain", "emotion"}
+
+    def patch(self, request):
+        episode, membership = get_episode_and_membership(request.user)
+
+        if membership.role != Membership.Role.OWNER:
+            return Response({"error": "비공개 설정은 산모만 변경할 수 있습니다."}, status=403)
+
+        hidden = request.data.get("hidden_categories")
+        if not isinstance(hidden, list):
+            return Response({"error": "hidden_categories는 리스트여야 합니다."}, status=400)
+
+        invalid = [c for c in hidden if c not in self.VALID_CATEGORIES]
+        if invalid:
+            return Response({"error": f"유효하지 않은 카테고리: {invalid}"}, status=400)
+
+        episode.hidden_tracking_categories = hidden
+        episode.save(update_fields=["hidden_tracking_categories"])
+        return Response({"hidden_tracking_categories": episode.hidden_tracking_categories})
+
+class WeekTrendView(generics.GenericAPIView):
+    """GET /api/care/journey/week-trend/"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        episode, membership = get_episode_and_membership(request.user)
+        data = calculate_week_trend(episode)
+
+        if membership.role != Membership.Role.OWNER:
+            hidden = episode.hidden_tracking_categories or []
+            for category in hidden:
+                data.pop(category, None)
+                # 해당 카테고리의 위험 배너도 같이 숨김
+                data["banners"] = [b for b in data["banners"] if b["type"] != category]
+
+        return Response(data)
