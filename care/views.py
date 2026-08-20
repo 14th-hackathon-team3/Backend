@@ -367,6 +367,11 @@ class TrackingCategoryVisibilityView(generics.GenericAPIView):
 
     VALID_CATEGORIES = {"sleep", "pain", "emotion"}
 
+    def get(self, request):
+        episode, _ = get_episode_and_membership(request.user)
+        return Response({"hidden_categories": episode.hidden_tracking_categories or []})
+
+
     def patch(self, request):
         episode, membership = get_episode_and_membership(request.user)
 
