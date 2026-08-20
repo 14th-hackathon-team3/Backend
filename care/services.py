@@ -9,7 +9,7 @@ from groups.models import Membership, Group
 from typing import Optional
 from rest_framework.exceptions import NotFound
 import threading
-
+from django.utils import timezone
 
 openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
@@ -151,7 +151,7 @@ def build_pain_area_text(episode: Episode) -> str:
     return ", ".join(labels)
 
 def build_mother_prompt(episode: Episode, logs_summary: list[dict]) -> str:
-    today = date.today()
+    today = timezone.localdate()
     weekday_str = WEEKDAY_KR[today.weekday()]
     has_enough_data = len(logs_summary) >= 6
 
@@ -198,7 +198,7 @@ def build_mother_prompt(episode: Episode, logs_summary: list[dict]) -> str:
 
 
 def build_family_prompt(episode: Episode, bottleneck: str, public_logs_summary: list[dict], caregiver_info: list[dict]) -> str:
-    today = date.today()
+    today = timezone.localdate()
     weekday_str = WEEKDAY_KR[today.weekday()]
     valid_ids = [c["membership_id"] for c in caregiver_info]
 
@@ -279,7 +279,7 @@ def generate_daily_plan(episode: Episode) -> RecoveryPlan:
     with transaction.atomic():
         plan, _ = RecoveryPlan.objects.update_or_create(
             episode=episode,
-            plan_date=date.today(),
+            plan_date=timezone.localdate(),
             defaults={
                 "ai_summary": mother_result.ai_summary,
                 "bottleneck": mother_result.bottleneck,
