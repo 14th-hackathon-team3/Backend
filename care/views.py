@@ -250,13 +250,13 @@ class ConfirmAllTodosView(generics.GenericAPIView):# 혹시 몰라서 한 번에
         ).update(status=Todo.Status.CONFIRMED)
         return Response({"confirmed_count": updated})
     
-class WeekTrendView(generics.GenericAPIView):
-    """GET /api/care/journey/week-trend/"""
-    permission_classes = [permissions.IsAuthenticated]
+# class WeekTrendView(generics.GenericAPIView):
+#     """GET /api/care/journey/week-trend/"""
+#     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request):
-        episode, _ = get_episode_and_membership(request.user)
-        return Response(calculate_week_trend(episode))
+#     def get(self, request):
+#         episode, _ = get_episode_and_membership(request.user)
+#         return Response(calculate_week_trend(episode))
     
 class TodayTodoListView(generics.GenericAPIView):
     """GET /api/care/todos/today/ - 산모/보호자 모두 조회 가능"""
