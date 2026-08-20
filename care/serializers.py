@@ -72,13 +72,17 @@ class DailyLogSerializer(serializers.ModelSerializer):
         if value is not None and not (1 <= value <= 4):
             raise serializers.ValidationError("피부 자가평가는 1~4점 사이여야 합니다.")
         return value
-    
+     
 class VoiceMemoSerializer(serializers.ModelSerializer):
+    daily_log_id = serializers.IntegerField(source='daily_log.pk', read_only=True)
+    log_date = serializers.DateField(source='daily_log.log_date', read_only=True)
+
     class Meta:
         model = VoiceMemo
-        fields = ['id', 'audio_file', 'duration_seconds', 'transcript_text', 'status', 'created_at']
-        read_only_fields = ['id', 'transcript_text', 'status', 'created_at']
-        
+        fields = ['id', 'daily_log_id', 'log_date', 'audio_file', 'duration_seconds',
+                  'transcript_text', 'status', 'created_at']
+        read_only_fields = ['id', 'daily_log_id', 'log_date', 'transcript_text', 'status', 'created_at']
+      
 class TodoUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Todo

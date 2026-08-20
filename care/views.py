@@ -2,7 +2,7 @@ from django.shortcuts import render, get_object_or_404
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied
-from .models import Episode, DailyLog, Todo, RecoveryPlan
+from .models import Episode, DailyLog, Todo, RecoveryPlan, VoiceMemo
 from .serializers import EpisodeUpdateSerializer, EpisodeOnboardingSerializer, DailyLogSerializer, VoiceMemoSerializer, TodoUpdateSerializer, TodoSerializer
 from groups.models import Membership
 from datetime import date
@@ -78,33 +78,56 @@ class DailyLogDetailView(generics.RetrieveUpdateAPIView):
         return DailyLog.objects.filter(episode=episode)
     
     
-class VoiceMemoUploadView(generics.GenericAPIView):
-    """POST /api/care/voice-memos/  (multipart/form-data, key='audio')"""
+class VoiceMemoListCreateView(generics.ListCreateAPIView):
     serializer_class = VoiceMemoSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request):
-        episode = get_active_episode(request.user)
+    def get_queryset(self):
+        episode, _ = get_episode_and_membership(self.request.user)
+        qs = VoiceMemo.objects.filter(daily_log__episode=episode).order_by('-created_at')
+        log_date = self.request.query_params.get('log_date')
+        daily_log_id = self.request.query_params.get('daily_log_id')
+        if log_date:
+            qs = qs.filter(daily_log__log_date=log_date)
+        elif daily_log_id:
+            qs = qs.filter(daily_log_id=daily_log_id)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        episode = get_active_episode(request.user)  # 업로드는 산모 본인만
         audio_file = request.FILES.get('audio')
         if not audio_file:
             return Response({"error": "audio 파일이 필요합니다."}, status=400)
-
         today_log, _ = DailyLog.objects.get_or_create(episode=episode, log_date=date.today())
-
-        before_state = {f: getattr(today_log, f) for f in
-                         ['emotion', 'sleep_hours', 'pain_score', 'pain_area', 'activity_hours', 'activity_type']}
-
         voice_memo = upload_and_transcribe(today_log, audio_file)
-        today_log.refresh_from_db()
-
-        auto_filled = [f for f in before_state if before_state[f] != getattr(today_log, f)]
-
         serializer = self.get_serializer(voice_memo)
-        return Response({
-            **serializer.data,
-            "auto_filled_fields": auto_filled,  # 프론트가 "음성으로 자동 입력됨" 표시하는 용도
-        }, status=201)
+        return Response(serializer.data, status=201)
     
+    
+class VoiceMemoListView(generics.ListAPIView):
+    """
+    GET /api/care/voice-memos/?log_date=2026-08-20
+    GET /api/care/voice-memos/?daily_log_id=12
+    파라미터 없으면 전체(최신순) 반환
+    """
+    serializer_class = VoiceMemoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        episode, _ = get_episode_and_membership(self.request.user)
+        qs = VoiceMemo.objects.filter(daily_log__episode=episode).order_by('-created_at')
+
+        log_date = self.request.query_params.get('log_date')
+        daily_log_id = self.request.query_params.get('daily_log_id')
+
+        if log_date:
+            qs = qs.filter(daily_log__log_date=log_date)
+        elif daily_log_id:
+            qs = qs.filter(daily_log_id=daily_log_id)
+
+        return qs
+    
+
 class GenerateDailyPlanView(generics.GenericAPIView):
     """POST /api/care/plans/generate/"""
     permission_classes = [permissions.IsAuthenticated]
