@@ -59,3 +59,10 @@ class MyGroupSerializer(serializers.ModelSerializer):
  
     def get_member_count(self, obj):
         return obj.memberships.count()
+
+class PrimaryCaregiverSerializer(serializers.ModelSerializer):
+    #주보호자 지정
+    class Meta:
+        model = Membership
+        fields = ["membership_id", "is_primary"]
+        read_only_fields = ["membership_id"]

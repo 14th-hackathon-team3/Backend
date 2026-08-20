@@ -4,7 +4,7 @@ from rest_framework import generics, permissions
 from rest_framework.exceptions import NotFound, PermissionDenied
  
 from .models import Membership, Group
-from .serializers import GuardianOnboardingSerializer, InviteCodeCheckSerializer, NotificationSettingSerializer, GroupMemberSerializer, MyGroupSerializer
+from .serializers import PrimaryCaregiverSerializer, GuardianOnboardingSerializer, InviteCodeCheckSerializer, NotificationSettingSerializer, GroupMemberSerializer, MyGroupSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
@@ -156,3 +156,34 @@ class MyGroupView(generics.RetrieveAPIView):
  
     def get_object(self):
         return get_my_group(self.request.user)
+
+class PrimaryCaregiverToggleView(generics.UpdateAPIView):
+    """
+    PATCH /api/groups/members/<membership_id>/primary/
+    body: {"is_primary": true}  또는 {"is_primary": false}
+    산모(owner)만 특정 보호자를 주 보호자로 지정/해제할 수 있음.
+    (주 보호자는 여러 명 가능 — AI 가족 todo 배정 대상이 됨)
+    """
+    serializer_class = PrimaryCaregiverSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_url_kwarg = "membership_id"
+
+    def get_object(self):
+        group = get_my_group(self.request.user)
+
+        # 요청자가 owner인지 확인 (보호자는 지정 권한 없음)
+        requester_membership = Membership.objects.filter(group=group, user=self.request.user).first()
+        if not requester_membership or requester_membership.role != Membership.Role.OWNER:
+            raise PermissionDenied("그룹 소유자만 주 보호자를 지정할 수 있습니다.")
+
+        target = Membership.objects.filter(
+            group=group, membership_id=self.kwargs["membership_id"]
+        ).first()
+        if not target:
+            raise NotFound("해당 멤버를 찾을 수 없습니다.")
+
+        # 산모 본인은 주 보호자 대상이 아님
+        if target.role == Membership.Role.OWNER:
+            raise PermissionDenied("산모 본인은 주 보호자로 지정할 수 없습니다.")
+
+        return target
