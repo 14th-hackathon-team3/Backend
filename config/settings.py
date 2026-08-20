@@ -88,6 +88,7 @@ MIDDLEWARE = [
 ]
 
 CORS_ALLOWED_ORIGINS = [ # cross-site 요청을 허용하는 호스트
+    'https://remeet-care.vercel.app/',
     'https://frontend-b35akp0m6-jang-yeseon-s-projects.vercel.app',
     'https://frontend-qhpxivrye-jang-yeseon-s-projects.vercel.app',
     'http://localhost:8000',
