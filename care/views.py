@@ -309,6 +309,19 @@ class TodoCheckToggleView(generics.GenericAPIView):
 
         todo.save(update_fields=['completed_by', 'completed_at'])
         return Response(TodoSerializer(todo).data)
+
+class VoiceMemoDetailView(generics.RetrieveAPIView):
+    """
+    GET /api/care/voice-memos/<id>/
+    업로드한 음성메모의 처리 상태(status) polling용
+    """
+    serializer_class = VoiceMemoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        episode, _ = get_episode_and_membership(self.request.user)
+        return VoiceMemo.objects.filter(daily_log__episode=episode)
+
     
 class TodayAnalysisView(generics.GenericAPIView):
     """GET /api/care/journey/today-analysis/ - 오늘의 AI 분석(요약/병목) 조회"""
@@ -333,3 +346,4 @@ class TodayAnalysisView(generics.GenericAPIView):
             "reasoning": plan.reasoning,
             "tomorrow_goal": plan.tomorrow_goal,
         })
+
