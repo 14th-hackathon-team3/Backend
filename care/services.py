@@ -8,43 +8,12 @@ from pydantic import BaseModel, Field
 from groups.models import Membership, Group
 from typing import Optional
 from rest_framework.exceptions import NotFound
+import threading
+
 
 openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 WEEKDAY_KR = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일']
-
-def upload_and_transcribe(daily_log: DailyLog, audio_file) -> VoiceMemo:
-    voice_memo = VoiceMemo.objects.create(
-        daily_log=daily_log,
-        audio_file=audio_file,
-        status=VoiceMemo.Status.PENDING,
-    )
-
-    try:
-        with voice_memo.audio_file.open('rb') as f:
-            transcript = openai_client.audio.transcriptions.create(
-                model="gpt-4o-mini-transcribe",  
-                file=f,
-                language="ko",
-            )
-        voice_memo.transcript_text = transcript.text
-        voice_memo.status = VoiceMemo.Status.DONE
-        voice_memo.save()
-        
-        # 텍스트 변환 성공했으면 daily_log 자동 채움 시도
-        try:
-            extracted = extract_fields_from_voice(transcript.text)
-            apply_extracted_fields_to_log(daily_log, extracted)
-        except Exception as e:
-            # 자동 채움 실패해도 전사 결과 자체는 살려둠 (필수 기능 아님)
-            print(f"필드 자동 추출 실패: {e}")
-            
-    except Exception as e:
-        voice_memo.status = VoiceMemo.Status.FAILED
-        voice_memo.save()
-        print(f"음성 변환 실패: {e}")
-
-    return voice_memo
 
 # ─────────────────────────────────────────
 # 1. 데이터 수집 + 결측 방어
@@ -530,3 +499,42 @@ def get_episode_and_membership(user):
         raise NotFound("진행 중인 episode가 없습니다.")
 
     return episode, membership
+
+def process_voice_memo_async(voice_memo_id: int):
+    """백그라운드 스레드에서 실행될 함수 — STT + 필드 추출"""
+    voice_memo = VoiceMemo.objects.get(pk=voice_memo_id)
+    try:
+        with voice_memo.audio_file.open('rb') as f:
+            transcript = openai_client.audio.transcriptions.create(
+                model="gpt-4o-mini-transcribe",
+                file=f,
+                language="ko",
+            )
+        voice_memo.transcript_text = transcript.text
+        voice_memo.status = VoiceMemo.Status.DONE
+        voice_memo.save()
+
+        try:
+            extracted = extract_fields_from_voice(transcript.text)
+            apply_extracted_fields_to_log(voice_memo.daily_log, extracted)
+        except Exception as e:
+            print(f"필드 자동 추출 실패: {e}")
+
+    except Exception as e:
+        voice_memo.status = VoiceMemo.Status.FAILED
+        voice_memo.save()
+        print(f"음성 변환 실패: {e}")
+
+
+def upload_and_transcribe(daily_log: DailyLog, audio_file) -> VoiceMemo:
+    """파일만 즉시 저장하고, 변환은 백그라운드로 넘김 (요청 타임아웃 방지)"""
+    voice_memo = VoiceMemo.objects.create(
+        daily_log=daily_log,
+        audio_file=audio_file,
+        status=VoiceMemo.Status.PENDING,
+    )
+
+    thread = threading.Thread(target=process_voice_memo_async, args=(voice_memo.pk,))
+    thread.start()
+
+    return voice_memo  # status=pending 상태로 바로 반환됨 (transcript_text는 아직 없음)
