@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import (VoiceMemoDetailView, EpisodeOnboardingView, MyEpisodeView, DailyLogListCreateView, DailyLogDetailView, TodayLogView, 
+from .views import (TodayAnalysisView, VoiceMemoDetailView, EpisodeOnboardingView, MyEpisodeView, DailyLogListCreateView, DailyLogDetailView, TodayLogView, 
                      GenerateDailyPlanView, TodoUpdateView, ConfirmDailyPlanView, TodoDetailView, 
                     ConfirmAllTodosView, WeekTrendView,TodayTodoListView, TodoVisibilityToggleView, TodoCheckToggleView, VoiceMemoListView, VoiceMemoListCreateView )
 
@@ -15,6 +15,7 @@ urlpatterns = [
     path('plans/<int:plan_id>/confirm/', ConfirmDailyPlanView.as_view(), name='plan-confirm'),
     #path('plans/<int:plan_id>/confirm/', ConfirmAllTodosView.as_view(), name='confirm-all-todos'),
     path('journey/week-trend/', WeekTrendView.as_view(), name='week-trend'),
+    path('journey/today-analysis/', TodayAnalysisView.as_view(), name='today-analysis'),
     path('todos/today/', TodayTodoListView.as_view(), name='todos-today'),
     path('todos/<int:pk>/', TodoDetailView.as_view(), name='todo-detail'),
     path('todos/<int:pk>/visibility/', TodoVisibilityToggleView.as_view(), name='todo-visibility'),
