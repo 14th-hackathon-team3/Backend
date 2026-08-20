@@ -11,10 +11,19 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+import environ
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+load_dotenv()
+
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -25,7 +34,11 @@ SECRET_KEY = 'django-insecure-aeh2)=o&m5$7idyq#ajb2%&@l#21&fxw%86lex&#50-3dz22&-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'bailey44.pythonanywhere.com',
+    'localhost',
+    '127.0.0.1',
+    ]
 
 
 # Application definition
@@ -38,14 +51,33 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'corsheaders',
     'accounts',
     'groups',
     'content',
     'care',
     'recovery',
+    'notifications',
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",  # 로그아웃/재발급 무효화용
+    'drf_spectacular',
 ]
 
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Recovery Relay API',
+    'DESCRIPTION': '산후 회복 케어 플랫폼 API',
+    'VERSION': '1.0.0',
+}
+
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -54,6 +86,18 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+CORS_ALLOWED_ORIGINS = [ # cross-site 요청을 허용하는 호스트
+    'https://remeet-care.vercel.app',
+    'https://frontend-b35akp0m6-jang-yeseon-s-projects.vercel.app',
+    'https://frontend-qhpxivrye-jang-yeseon-s-projects.vercel.app',
+    'http://localhost:8000',
+    'http://127.0.0.1:9000',
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = 'config.urls'
 
@@ -110,7 +154,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Seoul'
 
 USE_I18N = True
 
@@ -126,3 +170,24 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+AUTH_USER_MODEL = "accounts.User"
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
+    "ROTATE_REFRESH_TOKENS": True,       # refresh 재발급시 이전 토큰 폐기
+    "BLACKLIST_AFTER_ROTATION": True,
+    "USER_ID_FIELD": "user_id",
+    "USER_ID_CLAIM": "user_id", # ← 토큰 payload에 들어갈 키 이름도 맞춰줌
+}
+
+
+
+env = environ.Env()
+environ.Env.read_env(BASE_DIR / ".env")
+
+KAKAO_CLIENT_ID = env("KAKAO_CLIENT_ID")
+KAKAO_CLIENT_SECRET = env("KAKAO_CLIENT_SECRET")
+KAKAO_REDIRECT_URI = env("KAKAO_REDIRECT_URI")

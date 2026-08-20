@@ -1,0 +1,142 @@
+from rest_framework import serializers
+from .models import Episode, DailyLog, VoiceMemo, Todo
+from django.utils import timezone
+from groups.models import Membership
+
+class EpisodeOnboardingSerializer(serializers.ModelSerializer):
+    postpartum_week = serializers.ReadOnlyField()  # 계산값이라 읽기 전용으로만 응답에 포함
+
+    class Meta:
+        model = Episode
+        fields = [
+            'id',
+            'delivery_type',
+            'delivery_date',
+            'discharge_date',
+            'birth_order',
+            'older_child_age',
+            'initial_feeding_type',
+            
+            'recovery_location',
+            'partner_referral_consent',
+            'postpartum_week',
+            'created_at',
+            'initial_pain_areas', 
+            'initial_pain_area_custom_text',
+        ]
+        read_only_fields = ['id', 'created_at']
+        
+    def validate(self, attrs):
+        areas = attrs.get('initial_pain_areas', [])
+        custom_text = attrs.get('initial_pain_area_custom_text', '')
+
+        valid_values = [choice.value for choice in Episode.PainArea]
+        for area in areas:
+            if area not in valid_values:
+                raise serializers.ValidationError(f"'{area}'는 유효하지 않은 통증 부위입니다.")
+
+        # "특별한 통증 없음"은 다른 항목과 동시 선택 불가
+        if Episode.PainArea.NONE in areas and len(areas) > 1:
+            raise serializers.ValidationError("'특별한 통증 없음'은 다른 항목과 함께 선택할 수 없습니다.")
+
+        # "직접 입력" 선택했으면 텍스트 필수
+        if Episode.PainArea.CUSTOM in areas and not custom_text.strip():
+            raise serializers.ValidationError("'직접 입력'을 선택했으면 통증 부위를 입력해주세요.")
+
+        return attrs
+
+    def validate_delivery_date(self, value):
+        from datetime import date
+        if value > timezone.localdate():
+            raise serializers.ValidationError("출산일은 미래일 수 없습니다.")
+        return value
+    
+    
+class DailyLogSerializer(serializers.ModelSerializer):
+    # 비공개 가능한 필드 화이트리스트 (id, episode, log_date, created_at, private_fields 자체는 제외)
+    HIDEABLE_FIELDS = {
+        'emotion', 'sleep_hours', 'pain_score', 'pain_area',
+        'breastfeeding', 'medication', 'exercise', 'diet', 'memo',
+        'skin_self_score', 'hair_loss_status',
+        'skin_symptom_tags', 'pelvic_floor_symptoms',
+    }
+
+    class Meta:
+        model = DailyLog
+        fields = [
+            'id', 'episode', 'log_date',
+            'emotion', 'sleep_hours', 'pain_score', 'pain_area',
+            'breastfeeding', 'medication', 'exercise', 'diet', 'memo',
+            'skin_self_score', 'hair_loss_status',
+            'skin_symptom_tags', 'pelvic_floor_symptoms',
+            'private_fields',          # ← 추가
+            'created_at',
+        ]
+        read_only_fields = ['id', 'episode', 'created_at']
+
+    def validate_private_fields(self, value):
+        if value is None:
+            return value
+        if not isinstance(value, list):
+            raise serializers.ValidationError("private_fields는 리스트여야 합니다.")
+        invalid = [f for f in value if f not in self.HIDEABLE_FIELDS]
+        if invalid:
+            raise serializers.ValidationError(f"숨길 수 없는 필드입니다: {invalid}")
+        return value
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        # 가족(보호자)이 조회할 때는 private_fields에 해당하는 값 자체를 응답에서 제거
+        request = self.context.get('request')
+        membership = self.context.get('membership')
+        if request and membership and membership.role != Membership.Role.OWNER:
+            for field_name in (instance.private_fields or []):
+                data.pop(field_name, None)
+            data.pop('private_fields', None)  # 가족한테는 뭐가 숨겨졌는지도 안 보여줌
+
+        return data
+     
+class VoiceMemoSerializer(serializers.ModelSerializer):
+    daily_log_id = serializers.IntegerField(source='daily_log.pk', read_only=True)
+    log_date = serializers.DateField(source='daily_log.log_date', read_only=True)
+
+    class Meta:
+        model = VoiceMemo
+        fields = ['id', 'daily_log_id', 'log_date', 'audio_file', 'duration_seconds',
+                  'transcript_text', 'status', 'created_at']
+        read_only_fields = ['id', 'daily_log_id', 'log_date', 'transcript_text', 'status', 'created_at']
+      
+class TodoUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Todo
+        fields = ['content']  # 산모가 고칠 수 있는 건 내용뿐, reason/assignee는 AI 판단 그대로 유지
+            
+class TodoSerializer(serializers.ModelSerializer):
+    completed_by_name = serializers.SerializerMethodField()
+    assignee_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Todo
+        fields = ['id', 'content', 'reason', 'is_skip', 'status', 'order_index',
+                   'assignee_membership', 'assignee_name',
+                   'completed_by', 'completed_by_name', 'completed_at', 'visibility']
+        read_only_fields = ['id', 'reason', 'order_index', 'assignee_membership', 'assignee_name',
+                             'completed_by', 'completed_by_name', 'completed_at']
+
+    def get_completed_by_name(self, obj):
+        return obj.completed_by.user.name if obj.completed_by else None  # User 모델 실제 필드명 확인 필요
+
+    def get_assignee_name(self, obj):
+        return obj.assignee_membership.user.name if obj.assignee_membership else None
+      
+class EpisodeUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Episode
+        fields = ['delivery_date', 'discharge_date']  # 산모가 실사용상 고칠 만한 값만 한정
+
+    def validate_delivery_date(self, value):
+        from datetime import date
+        if value > timezone.localdate():
+            raise serializers.ValidationError("출산일은 미래일 수 없습니다.")
+        return value
