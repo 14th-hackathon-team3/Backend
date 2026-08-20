@@ -144,7 +144,7 @@ class TodayLogView(generics.RetrieveAPIView):
             raise NotFound("오늘 기록이 아직 없습니다.")
         return log
     
-class TodoUpdateView(generics.UpdateAPIView):
+class TodoUpdateView(generics.UpdateAPIView): # 지금 사용 X
     """PATCH /api/care/todos/<id>/  — draft 상태일 때만 산모가 내용 수정"""
     serializer_class = TodoUpdateSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -187,6 +187,10 @@ class TodoDetailView(generics.RetrieveUpdateDestroyAPIView):
         episode, membership = get_episode_and_membership(self.request.user)
         self.membership = membership
         return Todo.objects.filter(recovery_plan__episode=episode)
+    
+    def perform_update(self, serializer):
+        # 필요하면 여기에 상태별 제약 추가
+        serializer.save()
 
     def perform_destroy(self, instance):
         # 삭제는 산모(owner)만 가능하게 제한 — 보호자가 배정받은 할일을 임의로 지우지 못하게
@@ -195,6 +199,7 @@ class TodoDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance.delete()
     
 class ConfirmAllTodosView(generics.GenericAPIView):# 혹시 몰라서 한 번에 확정 짓는 것도 만들어 놓음
+    #지금 사용X
     """POST /api/care/plans/<plan_id>/confirm/  - 오늘 플랜의 모든 draft todo를 한번에 확정"""
     permission_classes = [permissions.IsAuthenticated]
 

@@ -17,7 +17,7 @@ def generate_invite_code(length=8):
  
 class Group(models.Model):
     group_id = models.BigAutoField(primary_key=True)
-    owner_user = models.ForeignKey(
+    owner_user = models.OneToOneField(   # ForeignKey → OneToOneField로 변경
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         db_column="owner_user_id",
