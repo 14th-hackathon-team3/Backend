@@ -309,6 +309,7 @@ class TodoCheckToggleView(generics.GenericAPIView):
 
         todo.save(update_fields=['completed_by', 'completed_at'])
         return Response(TodoSerializer(todo).data)
+
 class VoiceMemoDetailView(generics.RetrieveAPIView):
     """
     GET /api/care/voice-memos/<id>/
@@ -320,3 +321,29 @@ class VoiceMemoDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         episode, _ = get_episode_and_membership(self.request.user)
         return VoiceMemo.objects.filter(daily_log__episode=episode)
+
+    
+class TodayAnalysisView(generics.GenericAPIView):
+    """GET /api/care/journey/today-analysis/ - 오늘의 AI 분석(요약/병목) 조회"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        episode, _ = get_episode_and_membership(request.user)
+        plan = RecoveryPlan.objects.filter(episode=episode, plan_date=date.today()).first()
+
+        if not plan:
+            return Response({
+                "has_plan": False,
+                "message": "오늘의 분석이 아직 생성되지 않았어요.",
+            })
+
+        return Response({
+            "has_plan": True,
+            "plan_id": plan.pk,
+            "plan_date": plan.plan_date,
+            "ai_summary": plan.ai_summary,
+            "bottleneck": plan.bottleneck,
+            "reasoning": plan.reasoning,
+            "tomorrow_goal": plan.tomorrow_goal,
+        })
+
