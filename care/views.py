@@ -309,3 +309,14 @@ class TodoCheckToggleView(generics.GenericAPIView):
 
         todo.save(update_fields=['completed_by', 'completed_at'])
         return Response(TodoSerializer(todo).data)
+class VoiceMemoDetailView(generics.RetrieveAPIView):
+    """
+    GET /api/care/voice-memos/<id>/
+    업로드한 음성메모의 처리 상태(status) polling용
+    """
+    serializer_class = VoiceMemoSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        episode, _ = get_episode_and_membership(self.request.user)
+        return VoiceMemo.objects.filter(daily_log__episode=episode)
