@@ -22,11 +22,12 @@ class EpisodeOnboardingView(generics.CreateAPIView):
 
 class MyEpisodeView(generics.RetrieveUpdateAPIView):
     #현재 산모의 온보딩 정보 조회 API (GET)
-    #serializer_class = EpisodeOnboardingSerializer
+    serializer_class = EpisodeOnboardingSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        return Episode.objects.filter(user=self.request.user, is_active=True).latest('created_at')
+        episode, _ = get_episode_and_membership(self.request.user)  # 수정
+        return episode
     
     def get_serializer_class(self):
         return EpisodeUpdateSerializer if self.request.method in ("PUT", "PATCH") else EpisodeOnboardingSerializer
@@ -43,7 +44,7 @@ class DailyLogListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self): #최근 기록 목록 조회(최신순)
-        episode = get_active_episode(self.request.user)
+        episode, _ = get_episode_and_membership(self.request.user)
         queryset = DailyLog.objects.filter(episode=episode)
 
         # ?days=7 쿼리파라미터로 최근 N일만 조회 가능하게
@@ -240,7 +241,7 @@ class WeekTrendView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        episode = get_active_episode(request.user)
+        episode, _ = get_episode_and_membership(request.user)
         return Response(calculate_week_trend(episode))
     
 class TodayTodoListView(generics.GenericAPIView):
