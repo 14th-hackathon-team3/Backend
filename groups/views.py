@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.db import transaction
 from rest_framework import generics, permissions
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
  
 from .models import Membership, Group
 from .serializers import PrimaryCaregiverSerializer, GuardianOnboardingSerializer, InviteCodeCheckSerializer, NotificationSettingSerializer, GroupMemberSerializer, MyGroupSerializer
@@ -162,16 +162,17 @@ class PrimaryCaregiverToggleView(generics.UpdateAPIView):
     PATCH /api/groups/members/<membership_id>/primary/
     body: {"is_primary": true}  또는 {"is_primary": false}
     산모(owner)만 특정 보호자를 주 보호자로 지정/해제할 수 있음.
-    (주 보호자는 여러 명 가능 — AI 가족 todo 배정 대상이 됨)
+    (주 보호자는 최대 3명까지 가능 — AI 가족 todo 배정 대상이 됨)
     """
     serializer_class = PrimaryCaregiverSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_url_kwarg = "membership_id"
 
+    MAX_PRIMARY_CAREGIVERS = 3  # 상수로 빼두면 나중에 정책 바뀔 때 여기만 수정
+
     def get_object(self):
         group = get_my_group(self.request.user)
 
-        # 요청자가 owner인지 확인 (보호자는 지정 권한 없음)
         requester_membership = Membership.objects.filter(group=group, user=self.request.user).first()
         if not requester_membership or requester_membership.role != Membership.Role.OWNER:
             raise PermissionDenied("그룹 소유자만 주 보호자를 지정할 수 있습니다.")
@@ -182,8 +183,28 @@ class PrimaryCaregiverToggleView(generics.UpdateAPIView):
         if not target:
             raise NotFound("해당 멤버를 찾을 수 없습니다.")
 
-        # 산모 본인은 주 보호자 대상이 아님
         if target.role == Membership.Role.OWNER:
             raise PermissionDenied("산모 본인은 주 보호자로 지정할 수 없습니다.")
 
         return target
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        new_is_primary = serializer.validated_data.get("is_primary", instance.is_primary)
+
+        # False로 바꾸거나(해제), 이미 primary인 사람을 다시 True로 보내는 건 카운트에 안 걸림
+        if new_is_primary and not instance.is_primary:
+            with transaction.atomic():
+                current_count = (
+                    Membership.objects
+                    .select_for_update()
+                    .filter(group=instance.group, is_primary=True)
+                    .count()
+                )
+                if current_count >= self.MAX_PRIMARY_CAREGIVERS:
+                    raise ValidationError(
+                        f"주 보호자는 최대 {self.MAX_PRIMARY_CAREGIVERS}명까지 지정할 수 있습니다."
+                    )
+                serializer.save()
+        else:
+            serializer.save()
