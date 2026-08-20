@@ -505,11 +505,13 @@ def process_voice_memo_async(voice_memo_id: int):
     voice_memo = VoiceMemo.objects.get(pk=voice_memo_id)
     try:
         with voice_memo.audio_file.open('rb') as f:
-            transcript = openai_client.audio.transcriptions.create(
-                model="gpt-4o-mini-transcribe",
-                file=f,
-                language="ko",
-            )
+            file_bytes = f.read()
+
+        transcript = openai_client.audio.transcriptions.create(
+            model="gpt-4o-mini-transcribe",
+            file=(voice_memo.audio_file.name, file_bytes),
+            language="ko",
+        )
         voice_memo.transcript_text = transcript.text
         voice_memo.status = VoiceMemo.Status.DONE
         voice_memo.save()
