@@ -39,29 +39,32 @@ def get_active_episode(user):
     return episode
 
 class DailyLogListCreateView(generics.ListCreateAPIView):
-   
     serializer_class = DailyLogSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self): #최근 기록 목록 조회(최신순)
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        episode, membership = get_episode_and_membership(self.request.user)
+        context['membership'] = membership
+        return context
+
+    def get_queryset(self):
         episode, _ = get_episode_and_membership(self.request.user)
         queryset = DailyLog.objects.filter(episode=episode)
-
-        # ?days=7 쿼리파라미터로 최근 N일만 조회 가능하게
         days = self.request.query_params.get('days')
         if days:
             queryset = queryset[:int(days)]
         return queryset
 
     def create(self, request, *args, **kwargs):
-        episode = get_active_episode(request.user)
-        log_date = request.data.get('log_date', timezone.localdate().isoformat())
+        episode, membership = get_episode_and_membership(request.user)
 
-        # 오늘 기록이 이미 있으면 update, 없으면 create
-        instance, created = DailyLog.objects.get_or_create(
-            episode=episode,
-            log_date=log_date,
-        )
+        # private_fields는 산모(owner)만 설정 가능 — 보호자가 넘겨도 무시
+        if 'private_fields' in request.data and membership.role != Membership.Role.OWNER:
+            return Response({"error": "비공개 설정은 산모만 변경할 수 있습니다."}, status=403)
+
+        log_date = request.data.get('log_date', timezone.localdate().isoformat())
+        instance, created = DailyLog.objects.get_or_create(episode=episode, log_date=log_date)
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save(episode=episode)
@@ -70,13 +73,24 @@ class DailyLogListCreateView(generics.ListCreateAPIView):
         return Response(serializer.data, status=status_code)
     
 class DailyLogDetailView(generics.RetrieveUpdateAPIView):
-   
     serializer_class = DailyLogSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        episode, membership = get_episode_and_membership(self.request.user)
+        context['membership'] = membership
+        return context
+
     def get_queryset(self):
-        episode = get_active_episode(self.request.user)
+        episode, _ = get_episode_and_membership(self.request.user)
         return DailyLog.objects.filter(episode=episode)
+
+    def update(self, request, *args, **kwargs):
+        _, membership = get_episode_and_membership(request.user)
+        if 'private_fields' in request.data and membership.role != Membership.Role.OWNER:
+            return Response({"error": "비공개 설정은 산모만 변경할 수 있습니다."}, status=403)
+        return super().update(request, *args, **kwargs)
     
     
 class VoiceMemoListCreateView(generics.ListCreateAPIView):
