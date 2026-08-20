@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from datetime import date
+from django.utils import timezone
 
 class Episode(models.Model):
     class DeliveryType(models.TextChoices):
@@ -44,7 +45,7 @@ class Episode(models.Model):
     @property
     def postpartum_week(self): #산후주차
         # 저장 안 하고 계산해서 내려줌 (매번 갱신 필요 없게)
-        days = (date.today() - self.delivery_date).days
+        days = (timezone.localdate() - self.delivery_date).days
         return days // 7
 
     def __str__(self):

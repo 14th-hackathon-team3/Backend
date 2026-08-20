@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Episode, DailyLog, VoiceMemo, Todo
+from django.utils import timezone
 
 class EpisodeOnboardingSerializer(serializers.ModelSerializer):
     postpartum_week = serializers.ReadOnlyField()  # 계산값이라 읽기 전용으로만 응답에 포함
@@ -45,7 +46,7 @@ class EpisodeOnboardingSerializer(serializers.ModelSerializer):
 
     def validate_delivery_date(self, value):
         from datetime import date
-        if value > date.today():
+        if value > timezone.localdate():
             raise serializers.ValidationError("출산일은 미래일 수 없습니다.")
         return value
     
@@ -113,6 +114,6 @@ class EpisodeUpdateSerializer(serializers.ModelSerializer):
 
     def validate_delivery_date(self, value):
         from datetime import date
-        if value > date.today():
+        if value > timezone.localdate():
             raise serializers.ValidationError("출산일은 미래일 수 없습니다.")
         return value

@@ -55,7 +55,7 @@ class DailyLogListCreateView(generics.ListCreateAPIView):
 
     def create(self, request, *args, **kwargs):
         episode = get_active_episode(request.user)
-        log_date = request.data.get('log_date', date.today().isoformat())
+        log_date = request.data.get('log_date', timezone.localdate().isoformat())
 
         # 오늘 기록이 이미 있으면 update, 없으면 create
         instance, created = DailyLog.objects.get_or_create(
@@ -99,7 +99,7 @@ class VoiceMemoListCreateView(generics.ListCreateAPIView):
         audio_file = request.FILES.get('audio')
         if not audio_file:
             return Response({"error": "audio 파일이 필요합니다."}, status=400)
-        today_log, _ = DailyLog.objects.get_or_create(episode=episode, log_date=date.today())
+        today_log, _ = DailyLog.objects.get_or_create(episode=episode, log_date=timezone.localdate())
         voice_memo = upload_and_transcribe(today_log, audio_file)
         serializer = self.get_serializer(voice_memo)
         return Response(serializer.data, status=201)
@@ -163,7 +163,7 @@ class TodayLogView(generics.RetrieveAPIView):
 
     def get_object(self):
         episode = get_active_episode(self.request.user)
-        log = DailyLog.objects.filter(episode=episode, log_date=date.today()).first()
+        log = DailyLog.objects.filter(episode=episode, log_date=timezone.localdate()).first()
         if not log:
             raise NotFound("오늘 기록이 아직 없습니다.")
         return log
@@ -250,7 +250,7 @@ class TodayTodoListView(generics.GenericAPIView):
 
     def get(self, request):
         episode, membership = get_episode_and_membership(request.user)
-        plan = RecoveryPlan.objects.filter(episode=episode, plan_date=date.today()).first()
+        plan = RecoveryPlan.objects.filter(episode=episode, plan_date=timezone.localdate()).first()
 
         if not plan:
             return Response({"mother_todos": [], "family_todos": [], "message": "오늘 생성된 플랜이 아직 없어요."})
@@ -329,7 +329,7 @@ class TodayAnalysisView(generics.GenericAPIView):
 
     def get(self, request):
         episode, _ = get_episode_and_membership(request.user)
-        plan = RecoveryPlan.objects.filter(episode=episode, plan_date=date.today()).first()
+        plan = RecoveryPlan.objects.filter(episode=episode, plan_date=timezone.localdate()).first()
 
         if not plan:
             return Response({
